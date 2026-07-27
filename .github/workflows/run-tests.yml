@@ -1,0 +1,29 @@
+name: Tests (Full Docker)
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    services:
+      docker:
+        image: docker:latest
+        options: --privileged
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Create .env file
+        run: |
+          ./gen-env.sh -d -e .env.test
+          sed -i 's/POSTGRES_DB=bayanat$/POSTGRES_DB=bayanat_test/' .env.test
+      - name: Create config.test.json file, add allowed path to .env.test file  
+        run: |
+          echo '{"ETL_PATH_IMPORT": true, "ETL_ALLOWED_PATH": "/app"}' > config.test.json
+          echo "ETL_PATH_IMPORT=True" >> .env.test
+          echo "ETL_ALLOWED_PATH=/app" >> .env.test
+      - name: Bayanat Tests
+        run: docker compose -f docker-compose-test.yml --env-file .env.test up --build --exit-code-from bayanat

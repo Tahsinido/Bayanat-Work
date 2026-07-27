@@ -1,0 +1,36 @@
+FROM ubuntu:24.04@sha256:786a8b558f7be160c6c8c4a54f9a57274f3b4fb1491cf65146521ae77ff1dc54
+ENV DEBIAN_FRONTEND=noninteractive
+
+
+RUN apt-get update -y && \
+    apt-get install -yq python3.12 python3.12-dev python3.12-venv python3-pip curl libjpeg8-dev libzip-dev libxml2-dev libssl-dev libffi-dev libxslt1-dev libmysqlclient-dev libncurses5-dev postgresql postgresql-contrib python3-pip libpq-dev libimage-exiftool-perl postgis ffmpeg
+
+RUN apt clean
+RUN apt autoremove
+
+WORKDIR /app
+
+# Sets utf-8 encoding for Python
+ENV LANG=C.UTF-8
+# Turns off writing .pyc files
+ENV PYTHONDONTWRITEBYTECODE=1
+# Seems to speed things up
+ENV PYTHONUNBUFFERED=1
+# Install UV
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+COPY . /app
+RUN echo "Building Bayanat container."
+RUN uv sync --extra dev --extra ai --frozen
+ENV PATH="/app/.venv/bin:$PATH"
+RUN ls -la /app/.venv/bin/
+
+COPY ./flask/bin/entrypoint.sh /usr/local/bin/entrypoint.sh
+
+RUN chmod 550 /usr/local/bin/entrypoint.sh
+
+ARG ROLE
+ENV ROLE=${ROLE}
+
+CMD ["/usr/local/bin/entrypoint.sh"]

@@ -1,0 +1,1207 @@
+{% extends 'layout.html' %} {% block content %}
+{# Snippet styling lives in static/css/app.css, shared with Bulletin results. #}
+
+<v-main>
+    <v-container fluid>
+        <v-card>
+            <v-card-title>
+                <div class="flex-grow-1"></div>
+            </v-card-title>
+
+            <v-card-text>
+                <v-data-table-server
+                        height="calc(100vh - 260px)"
+                        fixed-header
+                        :headers="headers"
+                        :items="items"
+                        @update:options="refresh"
+                        :page="options.page"
+                        :loading="loading"
+                        :items-length="itemsLength"
+                        class="elevation-1"
+                >
+                    <template v-slot:top>
+                        <v-toolbar flat color="white">
+                            <v-toolbar-title>{{ _('All Locations') }}</v-toolbar-title>
+
+                            <v-text-field
+                                    variant="outlined"
+                                    class="mt-6"
+                                    density="compact"
+                                    clearable
+                                    @click:clear="resetSearch"
+                                    v-model="q"
+                                    label="{{ _('Search') }}"
+                                    @keydown.enter="refresh()"
+                            ></v-text-field>
+
+                            <v-spacer></v-spacer>
+
+                            {% if current_user.roles_in(['Admin','Mod','DA']) %}
+                            <v-btn
+                                    color="primary"
+                                    variant="elevated"
+                                    class="ma-2"
+                                    @click="newItem"
+                            >{{ _('New Item') }}
+                            </v-btn>
+                            {% endif %}
+
+                            <v-dialog v-model="dialog" max-width="1100px" scrollable>
+                                <v-card :title="formTitle">
+                                    <v-card-text style="max-height: 70vh">
+                                        <v-container>
+
+                                            <div class="text-overline text-medium-emphasis">{{ _('Site') }}</div>
+                                            <v-row>
+                                                <v-col cols="12" md="6">
+                                                    <v-text-field
+                                                            v-model="editedItem.name_of_site"
+                                                            :error-messages="nameError"
+                                                            label="{{ _('Name of Site') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                                <v-col cols="12" md="3">
+                                                    <v-text-field
+                                                            v-model="editedItem.mission_date"
+                                                            type="date"
+                                                            label="{{ _('Mission Date') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                                <v-col cols="12" md="3">
+                                                    <v-text-field
+                                                            v-model="editedItem.code"
+                                                            label="{{ _('Code') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                            </v-row>
+
+                                            <v-row>
+                                                <v-col cols="12" md="4">
+                                                    <v-text-field
+                                                            v-model="editedItem.collected_data_by"
+                                                            label="{{ _('Collected data by') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                                <v-col cols="12" md="4">
+                                                    <v-text-field
+                                                            v-model="editedItem.type_of_site"
+                                                            label="{{ _('Type of Site') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                                <v-col cols="12" md="4">
+                                                    <v-text-field
+                                                            v-model="editedItem.no_of_site"
+                                                            type="number"
+                                                            min="0"
+                                                            label="{{ _('No of Site') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                            </v-row>
+
+                                            <v-row>
+                                                <v-col cols="12" md="8">
+                                                    <v-combobox
+                                                            v-model="editedItem.data_types"
+                                                            :items="dataTypeSuggestions"
+                                                            label="{{ _('Data types') }}"
+                                                            multiple
+                                                            chips
+                                                            closable-chips
+                                                            clearable
+                                                    ></v-combobox>
+                                                </v-col>
+                                                <v-col cols="12" md="4">
+                                                    <v-text-field
+                                                            v-model="editedItem.times_documented"
+                                                            type="number"
+                                                            min="0"
+                                                            label="{{ _('Times documented') }}"
+                                                            hint="{{ _('How many times this site has been documented') }}"
+                                                            persistent-hint
+                                                    ></v-text-field>
+                                                </v-col>
+                                            </v-row>
+
+                                            <v-divider class="my-3"></v-divider>
+                                            <div class="d-flex align-center">
+                                                <div class="text-overline text-medium-emphasis">{{ _('Data storage link') }}</div>
+                                                <v-spacer></v-spacer>
+                                            </div>
+                                            <v-row>
+                                                <v-col cols="12" md="9">
+                                                    <v-text-field
+                                                            v-model="editedItem.external_link"
+                                                            label="{{ _('Link to the data for this location') }}"
+                                                            placeholder="D:\Projects\VR\Karabal Event.16.17.04.2025"
+                                                            hint="{{ _('Local folder, network share or https URL. Opening a local folder needs the one-time Windows helper (tools/windows-open-handler).') }}"
+                                                            persistent-hint
+                                                            prepend-inner-icon="mdi-folder-network"
+                                                    ></v-text-field>
+                                                </v-col>
+                                                <v-col cols="12" md="3" class="d-flex align-center ga-1">
+                                                    <v-btn
+                                                            variant="tonal"
+                                                            :disabled="!editedItem.external_link"
+                                                            @click="openLink(editedItem.external_link)"
+                                                    >{{ _('Open') }}
+                                                    </v-btn>
+                                                    <v-btn
+                                                            variant="text"
+                                                            icon="mdi-content-copy"
+                                                            :disabled="!editedItem.external_link"
+                                                            @click="copyLink(editedItem.external_link)"
+                                                    ></v-btn>
+                                                </v-col>
+                                            </v-row>
+
+                                            <v-divider class="my-3"></v-divider>
+                                            <div class="d-flex align-center mb-2">
+                                                <div class="text-overline text-medium-emphasis">
+                                                    {{ _('Sites at this location') }}
+                                                    <span v-if="editedItem.sites?.length" class="text-disabled">
+                                                        (${editedItem.sites.length})
+                                                    </span>
+                                                </div>
+                                                <v-spacer></v-spacer>
+                                                <v-btn size="small" variant="tonal" prepend-icon="mdi-plus"
+                                                       @click="addSite">{{ _('Add site') }}
+                                                </v-btn>
+                                            </div>
+
+                                            <v-expansion-panels v-if="editedItem.sites && editedItem.sites.length"
+                                                                v-model="openSitePanel" class="mb-3">
+                                                <v-expansion-panel v-for="(site, si) in editedItem.sites" :key="si">
+                                                    <v-expansion-panel-title>
+                                                        <v-chip size="x-small" class="mr-2"
+                                                                :color="si === 0 ? 'primary' : undefined">
+                                                            ${si === 0 ? "{{ _('Primary') }}" : "{{ _('Secondary') }}"}
+                                                        </v-chip>
+                                                        <span class="font-weight-medium">
+                                                            ${site.site_name || "{{ _('Untitled site') }}"}
+                                                        </span>
+                                                        <v-spacer></v-spacer>
+                                                        <span v-if="siteErrors[si]" class="text-error text-caption mr-2">
+                                                            {{ _('Name required') }}
+                                                        </span>
+                                                    </v-expansion-panel-title>
+                                                    <v-expansion-panel-text>
+                                                        <v-row>
+                                                            <v-col cols="12" md="5">
+                                                                <v-text-field v-model="site.site_name"
+                                                                              :error="Boolean(siteErrors[si])"
+                                                                              label="{{ _('Name of Site') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="3">
+                                                                <v-text-field v-model="site.mission_date" type="date"
+                                                                              label="{{ _('Mission Date') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="2">
+                                                                <v-text-field v-model="site.code"
+                                                                              label="{{ _('Code') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="2">
+                                                                <v-text-field v-model="site.type_of_site"
+                                                                              label="{{ _('Type of Site') }}"></v-text-field>
+                                                            </v-col>
+                                                        </v-row>
+                                                        <v-row>
+                                                            <v-col cols="12" md="3">
+                                                                <v-text-field v-model="site.collected_data_by"
+                                                                              label="{{ _('Collected data by') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="2">
+                                                                <v-text-field v-model="site.no_of_site" type="number" min="0"
+                                                                              label="{{ _('No of Site') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="2">
+                                                                <v-text-field v-model="site.times_documented" type="number" min="0"
+                                                                              label="{{ _('Times documented') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="5">
+                                                                <v-combobox v-model="site.data_types" :items="dataTypeSuggestions"
+                                                                            label="{{ _('Data types') }}" multiple chips
+                                                                            closable-chips clearable></v-combobox>
+                                                            </v-col>
+                                                        </v-row>
+                                                        <v-row>
+                                                            <v-col cols="12" md="2">
+                                                                <v-text-field v-model="site.total_photos" type="number" min="0"
+                                                                              label="{{ _('Photos') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="2">
+                                                                <v-text-field v-model="site.total_videos" type="number" min="0"
+                                                                              label="{{ _('Videos') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="2">
+                                                                <v-text-field v-model="site.total_interviews" type="number" min="0"
+                                                                              label="{{ _('Interviews') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="2">
+                                                                <v-text-field v-model="site.drone_photos" type="number" min="0"
+                                                                              label="{{ _('Drone Photos') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="2">
+                                                                <v-text-field v-model="site.drone_videos" type="number" min="0"
+                                                                              label="{{ _('Drone Videos') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="2">
+                                                                <v-text-field v-model="site.translation"
+                                                                              label="{{ _('Translation') }}"></v-text-field>
+                                                            </v-col>
+                                                        </v-row>
+                                                        <v-row>
+                                                            <v-col cols="12" md="3">
+                                                                <v-text-field v-model="site.data_size_for_site"
+                                                                              label="{{ _('Data Size for Site') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="3">
+                                                                <v-text-field v-model="site.total_size"
+                                                                              label="{{ _('Total Size') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="3">
+                                                                <v-text-field v-model="site.data_storage_location"
+                                                                              label="{{ _('Data storage location') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="3">
+                                                                <v-text-field v-model="site.excavated_status"
+                                                                              label="{{ _('Excavated status') }}"></v-text-field>
+                                                            </v-col>
+                                                        </v-row>
+                                                        <v-row>
+                                                            <v-col cols="12" md="9">
+                                                                <v-text-field v-model="site.external_link"
+                                                                              prepend-inner-icon="mdi-folder-network"
+                                                                              label="{{ _('Link to the data for this site') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="3" class="d-flex align-center ga-1">
+                                                                <v-btn variant="tonal" size="small"
+                                                                       :disabled="!site.external_link"
+                                                                       @click="openLink(site.external_link)">{{ _('Open') }}
+                                                                </v-btn>
+                                                                <v-btn variant="text" size="small" icon="mdi-content-copy"
+                                                                       :disabled="!site.external_link"
+                                                                       @click="copyLink(site.external_link)"></v-btn>
+                                                            </v-col>
+                                                        </v-row>
+                                                        <v-row>
+                                                            <v-col cols="12">
+                                                                <v-textarea v-model="site.description" rows="3" auto-grow
+                                                                            label="{{ _('Description / notes for this site') }}"
+                                                                            hint="{{ _('Searchable, with surrounding lines shown in results') }}"
+                                                                            persistent-hint></v-textarea>
+                                                            </v-col>
+                                                        </v-row>
+                                                        <v-row>
+                                                            <v-col cols="12" md="4">
+                                                                <v-switch v-model="site.has_interview" color="primary"
+                                                                          label="{{ _('Interviews at this site') }}"></v-switch>
+                                                            </v-col>
+                                                            <v-col cols="12" md="8">
+                                                                <v-combobox v-model="site.interview_names"
+                                                                            :disabled="!site.has_interview"
+                                                                            label="{{ _('Name of interview(s)') }}"
+                                                                            multiple chips closable-chips clearable></v-combobox>
+                                                            </v-col>
+                                                        </v-row>
+                                                        <v-row>
+                                                            <v-col cols="12">
+                                                                <v-textarea v-model="site.legal_analysis" rows="2" auto-grow
+                                                                            label="{{ _('Legal analysis') }}"></v-textarea>
+                                                            </v-col>
+                                                        </v-row>
+                                                        <v-row>
+                                                            <v-col cols="12" md="4">
+                                                                <v-text-field v-model="site.analysis_by"
+                                                                              label="{{ _('Analysis by') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="4">
+                                                                <v-text-field v-model="site.analysis_date" type="date"
+                                                                              label="{{ _('Analysis date') }}"></v-text-field>
+                                                            </v-col>
+                                                            <v-col cols="12" md="4">
+                                                                <v-text-field v-model="site.shared_with"
+                                                                              label="{{ _('Shared with') }}"></v-text-field>
+                                                            </v-col>
+                                                        </v-row>
+                                                        <v-divider class="my-3"></v-divider>
+                                                        <div class="text-overline text-medium-emphasis">
+                                                            {{ _('Media for this site') }}
+                                                        </div>
+                                                        <v-row>
+                                                            <v-col cols="12" md="9">
+                                                                <v-file-input
+                                                                        v-model="sitePendingFiles[si]"
+                                                                        :accept="acceptAttr"
+                                                                        :disabled="siteUploading[si]"
+                                                                        multiple chips show-size density="compact"
+                                                                        label="{{ _('Select photos, PDF or Word documents') }}"
+                                                                ></v-file-input>
+                                                            </v-col>
+                                                            <v-col cols="12" md="3" class="d-flex align-center">
+                                                                <v-btn color="primary" variant="tonal" size="small"
+                                                                       :loading="siteUploading[si]"
+                                                                       :disabled="!sitePendingFiles[si] || !sitePendingFiles[si].length"
+                                                                       @click="uploadSiteFiles(si)">{{ _('Upload') }}
+                                                                </v-btn>
+                                                            </v-col>
+                                                        </v-row>
+
+                                                        <v-alert v-for="(err, ei) in (siteUploadErrors[si] || [])"
+                                                                 :key="'sue'+ei" type="error" variant="tonal"
+                                                                 density="compact" class="mb-2">${err}
+                                                        </v-alert>
+
+                                                        <inline-media-renderer
+                                                                v-if="expandedSiteMedia[si]"
+                                                                :renderer-id="'field-data-site-' + si"
+                                                                :media="expandedSiteMedia[si].media"
+                                                                :media-type="expandedSiteMedia[si].mediaType"
+                                                                :initial-orientation="expandedSiteMedia[si].media?.orientation || 0"
+                                                                :use-metadata="true"
+                                                                class="mb-4"
+                                                                content-style="height: calc(100vh - 560px);"
+                                                                @close="closeSiteMedia(si)"
+                                                        ></inline-media-renderer>
+
+                                                        <media-grid
+                                                                v-if="site.medias && site.medias.length"
+                                                                :medias="site.medias"
+                                                                :horizontal="Boolean(expandedSiteMedia[si])"
+                                                                :mini-mode="Boolean(expandedSiteMedia[si])"
+                                                                enable-delete
+                                                                @media-click="openSiteMedia(si, $event)"
+                                                                @remove-media="removeSiteMedia(si, $event)"
+                                                        ></media-grid>
+                                                        <div v-else class="text-medium-emphasis text-caption mb-2">
+                                                            {{ _('No media attached to this site yet.') }}
+                                                        </div>
+
+                                                        <div class="d-flex mt-2">
+                                                            <v-spacer></v-spacer>
+                                                            <v-btn size="small" variant="text" color="error"
+                                                                   prepend-icon="mdi-delete-outline"
+                                                                   @click="removeSite(si)">{{ _('Remove this site') }}
+                                                            </v-btn>
+                                                        </div>
+                                                    </v-expansion-panel-text>
+                                                </v-expansion-panel>
+                                            </v-expansion-panels>
+                                            <div v-else class="text-medium-emphasis text-caption mb-3">
+                                                {{ _('No sites added yet. Use "Add site" to record each site separately under this location.') }}
+                                            </div>
+
+                                            <v-divider class="my-3"></v-divider>
+                                            <div class="text-overline text-medium-emphasis">{{ _('Description') }}</div>
+                                            <v-row>
+                                                <v-col cols="12">
+                                                    <tinymce-editor
+                                                            :init="tinyConfig"
+                                                            :key="descKey"
+                                                            v-model="editedItem.description"
+                                                    ></tinymce-editor>
+                                                </v-col>
+                                            </v-row>
+
+                                            <v-divider class="my-3"></v-divider>
+                                            <div class="text-overline text-medium-emphasis">{{ _('Interviews') }}</div>
+                                            <v-row>
+                                                <v-col cols="12" md="4">
+                                                    <v-switch
+                                                            v-model="editedItem.has_interview"
+                                                            color="primary"
+                                                            :label="editedItem.has_interview
+                                                                ? '{{ _('There are interviews at this site') }}'
+                                                                : '{{ _('No interviews at this site') }}'"
+                                                    ></v-switch>
+                                                </v-col>
+                                                <v-col cols="12" md="8">
+                                                    <v-combobox
+                                                            v-model="editedItem.interview_names"
+                                                            :disabled="!editedItem.has_interview"
+                                                            label="{{ _('Name of interview(s)') }}"
+                                                            hint="{{ _('Type a name and press Enter to add another') }}"
+                                                            persistent-hint
+                                                            multiple
+                                                            chips
+                                                            closable-chips
+                                                            clearable
+                                                    ></v-combobox>
+                                                </v-col>
+                                            </v-row>
+
+                                            <v-divider class="my-3"></v-divider>
+                                            <div class="text-overline text-medium-emphasis">{{ _('Collected Media') }}</div>
+                                            <v-row>
+                                                <v-col cols="12" md="3">
+                                                    <v-text-field
+                                                            v-model="editedItem.total_photos"
+                                                            type="number" min="0"
+                                                            label="{{ _('Total NO for Photos') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                                <v-col cols="12" md="3">
+                                                    <v-text-field
+                                                            v-model="editedItem.total_videos"
+                                                            type="number" min="0"
+                                                            label="{{ _('Total NO for Videos') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                                <v-col cols="12" md="3">
+                                                    <v-text-field
+                                                            v-model="editedItem.total_interviews"
+                                                            type="number" min="0"
+                                                            label="{{ _('Total NO for Interviews') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                                <v-col cols="12" md="3">
+                                                    <v-text-field
+                                                            v-model="editedItem.translation"
+                                                            label="{{ _('Translation (Videos and Interviews)') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                            </v-row>
+
+                                            <v-row>
+                                                <v-col cols="12" md="3">
+                                                    <v-text-field
+                                                            v-model="editedItem.drone_photos"
+                                                            type="number" min="0"
+                                                            label="{{ _('Drone Photos') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                                <v-col cols="12" md="3">
+                                                    <v-text-field
+                                                            v-model="editedItem.drone_videos"
+                                                            type="number" min="0"
+                                                            label="{{ _('Drone Videos') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                                <v-col cols="12" md="3">
+                                                    <v-text-field
+                                                            v-model="editedItem.data_size_for_site"
+                                                            label="{{ _('Data Size for Site') }}"
+                                                            placeholder="e.g. 250 GB"
+                                                    ></v-text-field>
+                                                </v-col>
+                                                <v-col cols="12" md="3">
+                                                    <v-text-field
+                                                            v-model="editedItem.total_size"
+                                                            label="{{ _('Total Size') }}"
+                                                            placeholder="e.g. 1.2 TB"
+                                                    ></v-text-field>
+                                                </v-col>
+                                            </v-row>
+
+                                            <v-row>
+                                                <v-col cols="12" md="6">
+                                                    <v-text-field
+                                                            v-model="editedItem.data_storage_location"
+                                                            label="{{ _('Data storage location') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                                <v-col cols="12" md="6">
+                                                    <v-text-field
+                                                            v-model="editedItem.excavated_status"
+                                                            label="{{ _('Excavated status') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                            </v-row>
+
+                                            <v-divider class="my-3"></v-divider>
+                                            <div class="text-overline text-medium-emphasis">{{ _('Analysis') }}</div>
+                                            <v-row>
+                                                <v-col cols="12">
+                                                    <v-textarea
+                                                            v-model="editedItem.legal_analysis"
+                                                            label="{{ _('Legal analysis') }}"
+                                                            rows="3"
+                                                            auto-grow
+                                                    ></v-textarea>
+                                                </v-col>
+                                            </v-row>
+                                            <v-row>
+                                                <v-col cols="12" md="4">
+                                                    <v-text-field
+                                                            v-model="editedItem.analysis_by"
+                                                            label="{{ _('Analysis by') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                                <v-col cols="12" md="4">
+                                                    <v-text-field
+                                                            v-model="editedItem.analysis_date"
+                                                            type="date"
+                                                            label="{{ _('Analysis date') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                                <v-col cols="12" md="4">
+                                                    <v-text-field
+                                                            v-model="editedItem.shared_with"
+                                                            label="{{ _('Shared with') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                            </v-row>
+
+                                            <v-divider class="my-3"></v-divider>
+                                            <div class="text-overline text-medium-emphasis">{{ _('Media') }}</div>
+                                            <v-row>
+                                                <v-col cols="12" md="9">
+                                                    <v-file-input
+                                                            v-model="pendingFiles"
+                                                            :accept="acceptAttr"
+                                                            :disabled="uploading"
+                                                            multiple
+                                                            chips
+                                                            show-size
+                                                            density="compact"
+                                                            label="{{ _('Select photos, PDF or Word documents') }}"
+                                                            :hint="allowedHint"
+                                                            persistent-hint
+                                                    ></v-file-input>
+                                                </v-col>
+                                                <v-col cols="12" md="3" class="d-flex align-center">
+                                                    <v-btn
+                                                            color="primary"
+                                                            variant="tonal"
+                                                            :loading="uploading"
+                                                            :disabled="!pendingFiles || !pendingFiles.length"
+                                                            @click="uploadFiles"
+                                                    >{{ _('Upload') }}
+                                                    </v-btn>
+                                                </v-col>
+                                            </v-row>
+
+                                            <v-alert
+                                                    v-for="(err, i) in uploadErrors"
+                                                    :key="'uerr-' + i"
+                                                    type="error"
+                                                    variant="tonal"
+                                                    density="compact"
+                                                    class="mb-2"
+                                            >${err}
+                                            </v-alert>
+
+                                            <!-- Same viewer Bulletins use: images, PDF and Word render inline. -->
+                                            <inline-media-renderer
+                                                    v-if="expandedMedia"
+                                                    renderer-id="field-data-media"
+                                                    :media="expandedMedia.media"
+                                                    :media-type="expandedMedia.mediaType"
+                                                    :initial-orientation="expandedMedia.media?.orientation || 0"
+                                                    :use-metadata="true"
+                                                    class="mb-4"
+                                                    content-style="height: calc(100vh - 520px);"
+                                                    @close="expandedMedia = null"
+                                            ></inline-media-renderer>
+
+                                            <media-grid
+                                                    v-if="editedItem.medias && editedItem.medias.length"
+                                                    :medias="editedItem.medias"
+                                                    :horizontal="Boolean(expandedMedia)"
+                                                    :mini-mode="Boolean(expandedMedia)"
+                                                    enable-delete
+                                                    @media-click="expandedMedia = $event"
+                                                    @remove-media="removeMedia"
+                                            ></media-grid>
+                                            <div v-else class="text-medium-emphasis text-caption mb-2">
+                                                {{ _('No media attached yet.') }}
+                                            </div>
+
+                                            <v-alert
+                                                    v-if="editedItem.modified_last_by"
+                                                    type="info"
+                                                    variant="tonal"
+                                                    density="compact"
+                                                    class="mt-2"
+                                            >
+                                                {{ _('Last modified by') }}
+                                                ${editedItem.modified_last_by}
+                                                {{ _('on') }}
+                                                ${editedItem.modified_last_date}
+                                            </v-alert>
+
+                                        </v-container>
+                                    </v-card-text>
+
+                                    <v-card-actions>
+                                        <v-spacer></v-spacer>
+                                        <v-btn color="blue darken-1" text @click="close">{{ _('Cancel') }}</v-btn>
+                                        <v-btn color="blue darken-1" text @click="save">{{ _('Save') }}</v-btn>
+                                    </v-card-actions>
+                                </v-card>
+                            </v-dialog>
+
+                        </v-toolbar>
+                    </template>
+
+                    <!-- Keyword in context: what matched, with the lines around it. -->
+                    <template #['item.snippet']="{ item }">
+                        <div v-if="item.snippet" class="py-2 snippet-cell">
+                            <div class="text-caption text-medium-emphasis font-weight-medium">
+                                ${item.snippet.field}
+                                <span class="text-disabled">
+                                    ({{ _('line') }} ${item.snippet.line_number})
+                                </span>
+                            </div>
+                            <div v-for="(l, i) in item.snippet.before" :key="'b'+i"
+                                 class="text-caption text-disabled snippet-line">${l}</div>
+                            <div class="text-body-2 snippet-line">
+                                <span>${item.snippet.line_before}</span><mark
+                                    class="snippet-mark">${item.snippet.match}</mark><span>${item.snippet.line_after}</span>
+                            </div>
+                            <div v-for="(l, i) in item.snippet.after" :key="'a'+i"
+                                 class="text-caption text-disabled snippet-line">${l}</div>
+                        </div>
+                        <span v-else class="text-disabled text-caption">&mdash;</span>
+                    </template>
+
+                    <template v-slot:item.action="{ item }">
+                        {% if current_user.roles_in(['Admin','Mod','DA']) %}
+                        <v-icon small @click="editItem(item)">mdi-pencil</v-icon>
+                        {% endif %}
+                    </template>
+
+                    <template v-slot:no-data></template>
+                </v-data-table-server>
+            </v-card-text>
+        </v-card>
+    </v-container>
+</v-main>
+
+{% endblock %} {% block js %}
+<script src="/static/js/tinymce/tinymce.min.js?v={{ config.VERSION }}" referrerpolicy="origin"></script>
+<script src="/static/js/tinymce-vue.min.js?v={{ config.VERSION }}"></script>
+
+<!-- Same media stack Bulletins use, so previews/viewers behave identically. -->
+<script src="/static/js/components/UniField.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/MediaGrid.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/MediaCard.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/MediaThumbnail.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/InlineMediaRenderer.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/ImageViewer.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/PdfViewer.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/NativePdfViewer.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/DocxViewer.js?v={{ config.VERSION }}"></script>
+<script nonce="{{ csp_nonce() }}">
+
+    const {createApp} = Vue;
+    const {createVuetify} = Vuetify;
+    const vuetify = createVuetify(vuetifyConfig);
+
+    const FIELD_DATA_DEFAULT = {
+        name_of_site: "",
+        mission_date: null,
+        collected_data_by: "",
+        data_types: [],
+        type_of_site: "",
+        no_of_site: null,
+        code: "",
+        total_photos: null,
+        total_videos: null,
+        total_interviews: null,
+        translation: "",
+        drone_photos: null,
+        drone_videos: null,
+        data_size_for_site: "",
+        total_size: "",
+        data_storage_location: "",
+        legal_analysis: "",
+        analysis_by: "",
+        analysis_date: null,
+        shared_with: "",
+        excavated_status: "",
+        description: "",
+        external_link: "",
+        times_documented: null,
+        has_interview: false,
+        interview_names: [],
+        medias: [],
+        sites: []
+    };
+
+    const SITE_DEFAULT = {
+        id: null, medias: [], site_name: "", mission_date: null, collected_data_by: "",
+        data_types: [], type_of_site: "", no_of_site: null, code: "",
+        total_photos: null, total_videos: null, total_interviews: null,
+        translation: "", drone_photos: null, drone_videos: null,
+        data_size_for_site: "", total_size: "", data_storage_location: "",
+        external_link: "", description: "", legal_analysis: "", analysis_by: "",
+        analysis_date: null, shared_with: "", excavated_status: "",
+        times_documented: null, has_interview: false, interview_names: []
+    };
+
+    const SITE_NUMERIC = ['no_of_site', 'total_photos', 'total_videos', 'total_interviews',
+        'drone_photos', 'drone_videos', 'times_documented'];
+
+    // Kept in sync with MEDIA_ALLOWED_EXTENSIONS server-side; the server is
+    // still the authority and re-checks on upload.
+    const ALLOWED_EXTENSIONS = {{ config.MEDIA_ALLOWED_EXTENSIONS | tojson }};
+
+    // Fallback when the browser reports no MIME type for a picked file.
+    const MIME_BY_EXT = {
+        jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+        gif: 'image/gif', webp: 'image/webp',
+        pdf: 'application/pdf',
+        doc: 'application/msword',
+        docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        txt: 'text/plain', mp4: 'video/mp4', webm: 'video/webm'
+    };
+
+    const app = createApp({
+        delimiters: delimiters,
+        mixins: [globalMixin],
+
+        data: () => ({
+            dialog: dialog,
+            drawer: drawer,
+            loading: true,
+            options: {},
+            q: '',
+            nameError: [],
+            tinyConfig: tinyConfig,
+            // TinyMCE does not re-read v-model when the dialog is reused, so
+            // the key is bumped to force a fresh editor per record.
+            descKey: 0,
+            pendingFiles: [],
+            uploading: false,
+            uploadErrors: [],
+            // Media currently opened in the inline viewer, or null.
+            expandedMedia: null,
+            openSitePanel: null,
+            siteErrors: {},
+            // Per-site media state, keyed by the site's index in the form.
+            sitePendingFiles: {},
+            siteUploading: {},
+            siteUploadErrors: {},
+            expandedSiteMedia: {},
+
+            dataTypeSuggestions: [
+                "{{ _('Photos') }}",
+                "{{ _('Videos') }}",
+                "{{ _('Interviews') }}",
+                "{{ _('Drone') }}",
+                "{{ _('Documents') }}",
+                "{{ _('Satellite') }}"
+            ],
+
+            // The match column only appears while a search is active.
+            searchActive: false,
+
+            items: [],
+            itemsLength: 0,
+            editedIndex: -1,
+            editedItem: Object.assign({}, FIELD_DATA_DEFAULT)
+        }),
+
+        computed: {
+            formTitle() {
+                return this.editedIndex === -1 ? "{{ _('New Item') }}" : "{{ _('Edit Item') }}";
+            },
+            headers() {
+                // Deliberately minimal: the full record opens in the dialog.
+                const cols = [
+                    {title: "{{ _('ID') }}", value: "id", width: 80},
+                    {title: "{{ _('Name of Site') }}", value: "name_of_site"},
+                    {title: "{{ _('Created by') }}", value: "created_by"},
+                    {title: "{{ _('Mission Date') }}", value: "mission_date"}
+                ];
+                if (this.searchActive) {
+                    cols.push({
+                        title: "{{ _('Match') }}", value: "snippet",
+                        sortable: false, width: 460
+                    });
+                }
+                {% if current_user.roles_in(['Admin','Mod','DA']) %}
+                cols.push({title: "{{ _('Actions') }}", value: "action", sortable: false, width: 90});
+                {% endif %}
+                return cols;
+            },
+            acceptAttr() {
+                return ALLOWED_EXTENSIONS.map(e => '.' + e).join(',');
+            },
+            allowedHint() {
+                return "{{ _('Allowed types') }}: " + ALLOWED_EXTENSIONS.join(', ');
+            }
+        },
+
+        watch: {
+            dialog(val) {
+                val || this.close();
+            }
+        },
+
+        methods: {
+            refresh(options) {
+                this.options = options || {...this.options, page: 1};
+                this.loading = true;
+
+                const sort = (this.options.sortBy && this.options.sortBy.length)
+                    ? this.options.sortBy[0]
+                    : null;
+
+                const params = new URLSearchParams({
+                    page: this.options.page || 1,
+                    per_page: this.options.itemsPerPage || 30,
+                    q: this.q || ''
+                });
+                if (sort) {
+                    params.append('sort_by', sort.key);
+                    params.append('sort_desc', sort.order === 'desc');
+                }
+
+                api.get(`/admin/api/field-data/?${params.toString()}`).then(response => {
+                    this.itemsLength = response.data.total;
+                    this.items = response.data.items;
+                    // Only flip after the response so the column and the rows
+                    // that populate it appear together.
+                    this.searchActive = Boolean((this.q || '').trim());
+                }).finally(() => {
+                    this.loading = false;
+                });
+            },
+
+            resetSearch() {
+                this.q = '';
+                this.refresh();
+            },
+
+            newItem() {
+                this.editedIndex = -1;
+                this.resetForm();
+                this.editedItem = this.blankItem();
+                this.descKey++;
+                this.dialog = true;
+            },
+
+            // The list only carries two columns, so fetch the full record
+            // before opening the editor.
+            editItem(item) {
+                this.editedIndex = this.items.indexOf(item);
+                this.resetForm();
+                api.get(`/admin/api/field-data/${item.id}`).then(response => {
+                    const full = response.data.item;
+                    this.editedItem = Object.assign({}, FIELD_DATA_DEFAULT, full, {
+                        data_types: [...(full.data_types || [])],
+                        interview_names: [...(full.interview_names || [])],
+                        medias: [...(full.medias || [])],
+                        sites: (full.sites || []).map(s => Object.assign({}, SITE_DEFAULT, s, {
+                            data_types: [...(s.data_types || [])],
+                            interview_names: [...(s.interview_names || [])],
+                            medias: [...(s.medias || [])]
+                        }))
+                    });
+                    this.descKey++;
+                    this.dialog = true;
+                });
+            },
+
+            blankItem() {
+                return Object.assign({}, FIELD_DATA_DEFAULT, {
+                    data_types: [], interview_names: [], medias: [], sites: []
+                });
+            },
+
+            addSite() {
+                if (!this.editedItem.sites) this.editedItem.sites = [];
+                this.editedItem.sites.push(Object.assign({}, SITE_DEFAULT, {
+                    data_types: [], interview_names: [], medias: []
+                }));
+                // Open the one just added so it can be filled in immediately.
+                this.openSitePanel = this.editedItem.sites.length - 1;
+            },
+
+            removeSite(index) {
+                if (!confirm("{{ _('Remove this site and its data from the location?') }}")) {
+                    return;
+                }
+                this.editedItem.sites.splice(index, 1);
+                this.siteErrors = {};
+                this.openSitePanel = null;
+            },
+
+            isWebLink(link) {
+                return /^https?:\/\//i.test((link || '').trim());
+            },
+
+            // D:\... , \\server\share\... or a bare folder path.
+            isLocalPath(link) {
+                const v = (link || '').trim();
+                return /^[a-zA-Z]:[\\/]/.test(v) || /^\\\\/.test(v);
+            },
+
+            // Browsers refuse to navigate from http:// to file://, so a local
+            // path is handed to the bayanat-open: protocol handler instead
+            // (tools/windows-open-handler). If that is not installed the
+            // navigation is simply ignored, so the path is copied too and the
+            // message says so -- the operator is never left with nothing.
+            openLink(link) {
+                if (!link) return;
+                const value = link.trim();
+
+                if (this.isWebLink(value)) {
+                    window.open(value, '_blank', 'noopener');
+                    return;
+                }
+
+                if (this.isLocalPath(value)) {
+                    window.location.href = 'bayanat-open:' + encodeURIComponent(value);
+                    this.copyLink(value, "{{ _('Opening in Explorer. If nothing happens the helper is not installed - the path has been copied instead.') }}");
+                    return;
+                }
+
+                this.copyLink(value, "{{ _('Path copied. Paste it into your file explorer.') }}");
+            },
+
+            copyLink(link, message) {
+                if (!link) return;
+                const note = message || "{{ _('Link copied') }}";
+                navigator.clipboard.writeText(link)
+                    .then(() => this.showSnack(note))
+                    .catch(() => this.showSnack("{{ _('Could not copy link') }}"));
+            },
+
+            resetForm() {
+                this.nameError = [];
+                this.uploadErrors = [];
+                this.pendingFiles = [];
+                this.expandedMedia = null;
+                this.siteErrors = {};
+                this.sitePendingFiles = {};
+                this.siteUploading = {};
+                this.siteUploadErrors = {};
+                this.expandedSiteMedia = {};
+            },
+
+            // Files are stored immediately; the Media rows are only linked to
+            // the record (or site) when the form is saved. Returns the errors
+            // so the caller can surface them wherever it needs to.
+            async uploadInto(files, target) {
+                const errors = [];
+
+                for (const file of Array.from(files || [])) {
+                    const ext = (file.name.split('.').pop() || '').toLowerCase();
+                    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+                        errors.push(`${file.name}: ` + "{{ _('file type not allowed') }}");
+                        continue;
+                    }
+                    const form = new FormData();
+                    form.append('file', file);
+                    try {
+                        const res = await axios.post('/admin/api/media/upload/', form, {
+                            suppressGlobalErrorHandler: true
+                        });
+                        target.push({
+                            // uuid: MediaGrid keys on id||uuid and there is no
+                            // id until the record is saved.
+                            uuid: `${res.data.etag}-${Date.now()}`,
+                            title: file.name,
+                            filename: res.data.filename,
+                            etag: res.data.etag,
+                            // MIME type, not extension: the shared viewers
+                            // resolve the renderer via getFileTypeFromMimeType.
+                            fileType: file.type || MIME_BY_EXT[ext] || 'application/octet-stream'
+                        });
+                    } catch (err) {
+                        const msg = err?.response?.data?.message || "{{ _('upload failed') }}";
+                        errors.push(`${file.name}: ${msg}`);
+                    }
+                }
+                return errors;
+            },
+
+            async uploadFiles() {
+                const files = Array.from(this.pendingFiles || []);
+                if (!files.length) return;
+
+                this.uploading = true;
+                this.uploadErrors = [];
+                this.uploadErrors = await this.uploadInto(files, this.editedItem.medias);
+                this.pendingFiles = [];
+                this.uploading = false;
+            },
+
+            async uploadSiteFiles(index) {
+                const files = Array.from(this.sitePendingFiles[index] || []);
+                if (!files.length) return;
+
+                const site = this.editedItem.sites[index];
+                if (!site.medias) site.medias = [];
+
+                this.siteUploading[index] = true;
+                this.siteUploadErrors[index] = [];
+                const errors = await this.uploadInto(files, site.medias);
+                this.siteUploadErrors[index] = errors;
+                this.sitePendingFiles[index] = [];
+                this.siteUploading[index] = false;
+            },
+
+            openSiteMedia(index, payload) {
+                this.expandedSiteMedia[index] = payload;
+            },
+
+            closeSiteMedia(index) {
+                this.expandedSiteMedia[index] = null;
+            },
+
+            removeSiteMedia(siteIndex, mediaIndex) {
+                const site = this.editedItem.sites[siteIndex];
+                const removed = site.medias[mediaIndex];
+                const open = this.expandedSiteMedia[siteIndex];
+                if (open && open.media === removed) {
+                    this.expandedSiteMedia[siteIndex] = null;
+                }
+                site.medias.splice(mediaIndex, 1);
+            },
+
+            removeMedia(index) {
+                const removed = this.editedItem.medias[index];
+                if (this.expandedMedia && this.expandedMedia.media === removed) {
+                    this.expandedMedia = null;
+                }
+                this.editedItem.medias.splice(index, 1);
+            },
+
+            // MediaCard/MediaThumbnail resolve their renderer through this
+            // root method; it normally comes from media-mixin, which carries
+            // dropzone/redaction state this page does not use.
+            getFileTypeFromMimeType(mimeType) {
+                if (mimeType?.includes('image/')) return 'image';
+                if (mimeType?.includes('video/')) return 'video';
+                if (mimeType?.includes('audio/')) return 'audio';
+                if (mimeType?.includes('application/pdf')) return 'pdf';
+                if (mimeType?.includes('wordprocessingml')) return 'docx';
+                return 'unknown';
+            },
+
+            close() {
+                this.dialog = false;
+                setTimeout(() => {
+                    this.editedItem = this.blankItem();
+                    this.editedIndex = -1;
+                    this.resetForm();
+                }, 300);
+            },
+
+            // Number inputs yield strings and cleared fields yield ""; the API
+            // rejects both, so normalise before sending.
+            buildPayload() {
+                const numeric = ['no_of_site', 'total_photos', 'total_videos', 'total_interviews',
+                    'drone_photos', 'drone_videos', 'times_documented'];
+                const dates = ['mission_date', 'analysis_date'];
+                const arrays = ['data_types', 'interview_names'];
+                const payload = {};
+
+                Object.keys(FIELD_DATA_DEFAULT).forEach(key => {
+                    let value = this.editedItem[key];
+                    if (numeric.includes(key)) {
+                        value = (value === '' || value === null || value === undefined)
+                            ? null : Number(value);
+                    } else if (dates.includes(key)) {
+                        value = value || null;
+                    } else if (arrays.includes(key)) {
+                        value = value || [];
+                    } else if (key === 'has_interview') {
+                        value = !!value;
+                    } else if (key === 'sites') {
+                        value = (value || []).map((s, i) => {
+                            const out = {sort_order: i};
+                            Object.keys(SITE_DEFAULT).forEach(k => {
+                                let v = s[k];
+                                if (SITE_NUMERIC.includes(k)) {
+                                    v = (v === '' || v === null || v === undefined) ? null : Number(v);
+                                } else if (k === 'mission_date' || k === 'analysis_date') {
+                                    v = v || null;
+                                } else if (k === 'data_types' || k === 'interview_names') {
+                                    v = v || [];
+                                } else if (k === 'has_interview') {
+                                    v = !!v;
+                                } else if (k === 'medias') {
+                                    // Send only what the API validates.
+                                    v = (v || []).map(m => ({
+                                        id: m.id, title: m.title, filename: m.filename,
+                                        etag: m.etag, fileType: m.fileType
+                                    }));
+                                } else if (k === 'id') {
+                                    v = v || null;
+                                }
+                                out[k] = v;
+                            });
+                            if (out.id === null) delete out.id;
+                            return out;
+                        });
+                    } else if (key === 'medias') {
+                        // Send only what the API validates; to_dict returns extras.
+                        value = (value || []).map(m => ({
+                            id: m.id, title: m.title, filename: m.filename,
+                            etag: m.etag, fileType: m.fileType
+                        }));
+                    }
+                    payload[key] = value;
+                });
+
+                if (this.editedIndex > -1) {
+                    payload.id = this.editedItem.id;
+                }
+                return payload;
+            },
+
+            save() {
+                if (!this.editedItem.name_of_site || !this.editedItem.name_of_site.trim()) {
+                    this.nameError = ["{{ _('Name of Site is required') }}"];
+                    return;
+                }
+                this.nameError = [];
+
+                // Catch unnamed sites here: the API rejects them, but pointing
+                // at the offending panel is more useful than a generic 400.
+                const badSites = {};
+                (this.editedItem.sites || []).forEach((s, i) => {
+                    if (!s.site_name || !s.site_name.trim()) badSites[i] = true;
+                });
+                this.siteErrors = badSites;
+                const firstBad = Object.keys(badSites)[0];
+                if (firstBad !== undefined) {
+                    this.openSitePanel = Number(firstBad);
+                    this.showSnack("{{ _('Every site needs a name') }}");
+                    return;
+                }
+                const payload = this.buildPayload();
+
+                if (this.editedIndex > -1) {
+                    api.put(`/admin/api/field-data/${this.editedItem.id}`, {item: payload})
+                        .then(response => {
+                            this.showSnack(response.data);
+                            this.refresh();
+                            this.close();
+                        });
+                } else {
+                    api.post('/admin/api/field-data/', {item: payload})
+                        .then(response => {
+                            this.showSnack(response.data);
+                            this.refresh();
+                            this.close();
+                        });
+                }
+            }
+        }
+    });
+
+    app.component('TinymceEditor', Editor);
+    app.component('UniField', UniField);
+    app.component('MediaGrid', MediaGrid);
+    app.component('MediaCard', MediaCard);
+    app.component('MediaThumbnail', MediaThumbnail);
+    app.component('InlineMediaRenderer', InlineMediaRenderer);
+    app.component('ImageViewer', ImageViewer);
+    app.component('PdfViewer', PdfViewer);
+    app.component('NativePdfViewer', NativePdfViewer);
+    app.component('DocxViewer', DocxViewer);
+
+    app.use(router).use(vuetify);
+    router.isReady().then(() => {
+        app.mount('#app');
+        window.app = app;
+    });
+</script>
+{% endblock %}

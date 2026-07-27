@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <title>{{ _('Bayanat') }}</title>
+    <meta name="description" content="{{ _('Bayanat | A Data Management Solution by SJAC') }}"/>
+    <meta name="author" content="{{ _('Syria Justice and Accountability Center') }}"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+
+    <link rel="stylesheet" href="/static/css/vuetify.min.css?v={{ config.VERSION }}"/>
+    <link rel="stylesheet" href="/static/css/app.css?v={{ config.VERSION }}"/>
+    <link rel="stylesheet" href="/static/font/mdi/css/materialdesignicons.css?v={{ config.VERSION }}"/>
+    <link rel="stylesheet" href="/static/js/croppr/croppr.min.css?v={{ config.VERSION }}"/>
+
+    <!-- favicon -->
+
+    <link rel="apple-touch-icon" sizes="57x57" href="/static/img/favicon/apple-icon-57x57.png?v={{ config.VERSION }}">
+    <link rel="apple-touch-icon" sizes="60x60" href="/static/img/favicon/apple-icon-60x60.png?v={{ config.VERSION }}">
+    <link rel="apple-touch-icon" sizes="72x72" href="/static/img/favicon/apple-icon-72x72.png?v={{ config.VERSION }}">
+    <link rel="apple-touch-icon" sizes="76x76" href="/static/img/favicon/apple-icon-76x76.png?v={{ config.VERSION }}">
+    <link rel="apple-touch-icon" sizes="114x114" href="/static/img/favicon/apple-icon-114x114.png?v={{ config.VERSION }}">
+    <link rel="apple-touch-icon" sizes="120x120" href="/static/img/favicon/apple-icon-120x120.png?v={{ config.VERSION }}">
+    <link rel="apple-touch-icon" sizes="144x144" href="/static/img/favicon/apple-icon-144x144.png?v={{ config.VERSION }}">
+    <link rel="apple-touch-icon" sizes="152x152" href="/static/img/favicon/apple-icon-152x152.png?v={{ config.VERSION }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/img/favicon/apple-icon-180x180.png?v={{ config.VERSION }}">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/img/favicon/android-icon-192x192.png?v={{ config.VERSION }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon/favicon-32x32.png?v={{ config.VERSION }}">
+    <link rel="icon" type="image/png" sizes="96x96" href="/static/img/favicon/favicon-96x96.png?v={{ config.VERSION }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon/favicon-16x16.png?v={{ config.VERSION }}">
+    <link rel="manifest" crossorigin="use-credentials" href="/static/img/favicon/manifest.json?v={{ config.VERSION }}">
+    <meta name="msapplication-TileImage" content="/static/img/favicon/ms-icon-144x144.png">
+
+    {% block css %}{% endblock %}
+    {% block head_js %} {% endblock %}
+</head>
+
+<body>
+
+
+<div id="app" class="h-screen security">
+    <v-app v-cloak class="h-screen">
+        <v-layout>
+            {% block content %} {% endblock %}
+        </v-layout>
+    </v-app>
+</div>
+
+{% if current_user.is_authenticated %}
+    <div class="d-none" data-settings='{{ current_user.settings|tojson if current_user.settings else '{}' }}'></div>
+{% else %}
+    <div class="d-none" data-settings='{}'></div>
+{% endif %}
+<script nonce="{{ csp_nonce() }}">
+    window.__settings__ = JSON.parse(document.querySelector('[data-settings]').dataset.settings);
+</script>
+
+{% if config.DEBUG %}
+<script src="/static/js/vue.global.js?v={{ config.VERSION }}"></script>
+{% else  %}
+<script src="/static/js/vue.global.prod.js?v={{ config.VERSION }}"></script>
+{% endif  %}
+
+<script src="/static/js/vuetify.min.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/axios.min.js?v={{ config.VERSION }}"></script>
+
+<script src="/static/js/vue-router.global.js?v={{ config.VERSION }}"></script>
+<script nonce="{{ csp_nonce() }}">
+    {%  include 'admin/jsapi.jinja2' %}
+</script>
+<script src="/static/js/common/config.js?v={{ config.VERSION }}"></script>
+
+
+
+{% block js %}
+    <script nonce="{{ csp_nonce() }}">
+        const {createApp} = Vue;
+        const {createVuetify} = Vuetify;
+
+        const vuetify = createVuetify(vuetifyConfig);
+
+        const app = createApp({
+            data() {
+                return {
+                    activeTab: null
+                };
+            },
+
+            delimiters: delimiters
+        });
+
+        app.use(vuetify).mount('#app');
+
+    </script>
+{% endblock %}
+
+
+</body>
+</html>

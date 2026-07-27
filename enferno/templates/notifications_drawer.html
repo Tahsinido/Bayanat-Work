@@ -1,0 +1,55 @@
+<v-navigation-drawer
+        v-model="notifications.ui.drawerVisible"
+        location="right"
+        temporary
+        width="624"
+        :style="{ zIndex: 3000 }"
+>
+
+    <v-card variant="flat">
+        <v-toolbar>
+            <v-toolbar-title class="text-h6">
+                {{ _('Notifications') }}
+            </v-toolbar-title>
+            <template #append>
+                <v-tooltip location="bottom" :style="{ zIndex: 3002 }">
+                    <template v-slot:activator="{ props }">
+                        <v-btn v-bind="props" icon="mdi-open-in-app" @click="toggleNotificationsDialog()"></v-btn>
+                    </template>
+                    {{ _('Open notifications dialog') }}
+                </v-tooltip>
+                <v-tooltip location="bottom" :style="{ zIndex: 3002 }">
+                    <template v-slot:activator="{ props }">
+                        <v-btn v-bind="props" icon="mdi-cog" href="/admin/system-administration/#notifications"></v-btn>
+                    </template>
+                    {{ _('Notification Settings') }}
+                </v-tooltip>
+                <v-btn icon="mdi-close" @click="notifications.ui.drawerVisible=false"></v-btn>
+            </template>
+        </v-toolbar>
+
+        <v-divider class="border-opacity-25"></v-divider>
+
+        <v-btn
+            @click="markAllAsRead()"
+            :loading="notifications.status.markingAllAsRead"
+            :disabled="!notifications.unreadCount"
+            color="primary"
+            variant="text"
+            class="font-weight-medium"
+            block
+            tile
+            size="x-large"
+        >{{ _('Mark All as Read') }}</v-btn>
+
+        <notifications-list
+            :notifications="notifications.items"
+            :initial-loading="notifications.status.initialLoading"
+            :has-more="notifications.hasMore"
+            :loading-more="notifications.status.loadingMore"
+            @read-notification="readNotification"
+            @load-notifications="loadNotifications(notifications.pagination)"
+            :load-error="notifications.status.loadError"
+        />
+    </v-card>
+</v-navigation-drawer>

@@ -1,0 +1,351 @@
+{% extends 'layout.html' %}
+{% block content %}
+
+
+    <v-main>
+
+        <v-container fluid>
+                    <v-card>
+
+                        <v-card-text>
+
+                            <v-data-table-server
+                                    height="calc(100vh - 260px)"
+                                    fixed-header
+                                    :headers="headers"
+                                    :items="items"
+                                    :loading="loading"
+                                    @update:options="refresh"
+                                    :page="options.page"
+                                    :items-length="itemsLength"
+                            >
+                                <template v-slot:top>
+                                    <v-toolbar flat>
+                                        <v-toolbar-title>{{ _('User Groups') }}</v-toolbar-title>
+
+                                        <v-spacer></v-spacer>
+
+                                        <v-btn
+                                                @click="newItem"
+                                                color="primary"
+                                                variant="elevated"
+                                                class="ma-2"
+
+                                        >{{ _('New Group') }}</v-btn>
+
+                                        <v-dialog v-model="dialog" max-width="770px" @after-leave="resetState()">
+                                            <v-card>
+                                                <v-card-title class="px-5 py-7">
+                                                    <span class="headline">${ formTitle }</span>
+                                                </v-card-title>
+
+                                                <v-card-text class="px-7 py-0">
+                                                    <v-text-field
+                                                            v-model="editedItem.name"
+                                                    >
+                                                        <template v-slot:label>{{ _('Group Name') }} <span class="text-error">*</span></template>
+                                                    </v-text-field>
+                                                    <v-textarea
+                                                                v-model="editedItem.description"
+                                                                label="{{ _('Description') }}"
+                                                    ></v-textarea>
+                                                    <div>
+                                                        <div class="text-body-2 mb-2 d-flex align-center">{{ _('Group Colors') }} <v-btn density="compact" variant="text" size="small" class="text-decoration-underline text-medium-emphasis" @click="editedItem.color = null">{{ _('clear selection') }}</v-btn></div>
+                                                        <div class="d-flex align-center ga-3">
+                                                            <v-btn v-for="predefinedColor in predefinedColors" :key="predefinedColor" icon tile density="comfortable" @click="editedItem.color = predefinedColor">
+                                                                <v-avatar size="30" rounded="0" :color="predefinedColor">
+                                                                    <v-icon v-if="editedItem.color === predefinedColor">mdi-check</v-icon>
+                                                                </v-avatar>
+                                                            </v-btn>
+                                                            <v-btn v-if="customColor" icon tile density="comfortable" @click="editedItem.color = customColor">
+                                                                <v-avatar size="30" rounded="0" :color="customColor">
+                                                                    <v-icon v-if="editedItem.color === customColor">mdi-check</v-icon>
+                                                                </v-avatar>
+                                                            </v-btn>
+                                                            <v-menu v-model="colorMenuOpen" :close-on-content-click="false">
+                                                                <template v-slot:activator="{ props }">
+                                                                    <v-btn v-bind="props" icon="mdi-plus" density="compact" variant="tonal"></v-btn>
+                                                                </template>
+                                                                <v-card>
+                                                                    <v-color-picker v-model="customColorPreview" elevation="0" mode="hex"></v-color-picker>
+                                                                    <v-card-actions class="pt-0">
+                                                                        <v-spacer></v-spacer>
+                                                                        <v-btn variant="outlined" size="small" @click="cancelColorPicker">{{ _('Cancel') }}</v-btn>
+                                                                        <v-btn color="primary" variant="elevated" size="small" @click="confirmCustomColor">{{ _('Apply') }}</v-btn>
+                                                                    </v-card-actions>
+                                                                </v-card>
+                                                            </v-menu>
+                                                        </div>
+                                                        <span class="text-caption text-medium-emphasis">{{ _('Useful to easily identify groups in data tables') }}</span>
+                                                    </div>
+                                                </v-card-text>
+
+                                                <v-card-actions class="px-6 py-5">
+                                                    <v-spacer></v-spacer>
+                                                    <v-btn variant="outlined" @click="close">{{ _('Cancel') }}</v-btn>
+                                                    <v-btn color="primary" variant="elevated" @click="save">{{ _('Save') }}</v-btn>
+                                                </v-card-actions>
+                                            </v-card>
+                                        </v-dialog>
+
+                                        <v-dialog
+                                                v-model="imDialog"
+                                                width="500"
+                                        >
+                                            <template v-slot:activator="{ props }">
+                                                <v-btn
+                                                    color="secondary"
+                                                    variant="elevated"
+                                                    class="ma-2"
+                                                    v-bind="props">
+                                                    {{ _('Import CSV') }}
+                                                </v-btn>
+                                            </template>
+
+                                            <v-card>
+                                                <v-card-title>
+                                                    <span class="headline">{{ _('Import CSV') }}</span>
+                                                </v-card-title>
+
+                                                <v-card-text>
+                                                    <v-container>
+                                                        <v-row>
+                                                            <v-col cols="12" md="12">
+                                                                <v-file-input v-model="csvFile" show-size
+                                                                              accept=".csv"
+                                                                              label="{{ _('Select CSV File') }}"></v-file-input>
+
+                                                            </v-col>
+                                                        </v-row>
+                                                    </v-container>
+                                                </v-card-text>
+
+                                                <v-card-actions>
+                                                    <v-spacer></v-spacer>
+                                                    <v-btn
+                                                            color="blue darken-1"
+                                                            text
+                                                            @click="imDialog=false"
+                                                    >{{ _('Cancel') }}</v-btn
+                                                    >
+                                                    <v-btn
+                                                            color="blue darken-1"
+                                                            text
+                                                            @click="importCSV"
+                                                    >{{ _('Save') }}</v-btn
+                                                    >
+                                                </v-card-actions>
+                                            </v-card>
+
+                                        </v-dialog>
+
+                                    </v-toolbar>
+                                </template>
+
+                                <template v-slot:item.color="{item}">
+                                    <v-chip
+                                        v-if="item.color"
+                                        label
+                                        size="small"
+                                        rounded="pill"
+                                        class="font-weight-medium"
+                                        :style="{
+                                            backgroundColor: item.color,
+                                            width: '60px',
+                                        }"
+                                    ></v-chip>
+                                </template>
+
+                                <template v-slot:item.action="{ item }">
+                                    <template v-if="!['Admin','Mod','DA'].includes(item.name)">
+                                        <v-icon small class="mr-2" @click="editItem(item)">
+                                            mdi-pencil
+                                        </v-icon>
+                                        <v-icon small @click="deleteItem(item)">
+                                            mdi-delete-sweep
+                                        </v-icon>
+                                    </template>
+                                </template>
+
+                                <template v-slot:no-data></template>
+                            </v-data-table-server>
+                            
+                        </v-card-text>
+                    </v-card>
+        </v-container>
+
+    </v-main>
+
+
+{% endblock %} {% block js %}
+    <script nonce="{{ csp_nonce() }}">
+
+        const {createApp} = Vue;
+        const {createVuetify} = Vuetify;
+        const vuetify = createVuetify(vuetifyConfig);
+
+        const app = createApp({
+            delimiters: delimiters,
+            mixins: [globalMixin],
+
+            data: () => ({
+
+                dialog: dialog,
+                imDialog: false,
+                drawer: drawer,
+                loading: true,
+                csvFile: null,
+                options: {},
+
+                headers: [
+                    {title: "{{_('ID')}}", value: "id"},
+                    {title: "{{_('Name')}}", value: "name"},
+                    {title: "{{_('Color')}}", value: "color"},
+                    {title: "{{_('Description')}}", value: "description"},
+                    {title: "{{_('Actions')}}", value: "action", sortable: false}
+                ],
+
+                items: [],
+                itemsLength: 10,
+                editedIndex: -1,
+                editedItem: {
+                    name: ""
+                },
+                defaultItem: {
+                    name: "",
+                    color: '#439d92',
+                },
+                predefinedColors: ['#A61C00', '#CC0000', '#E69138', '#F1C232', '#6AA84F', '#45818E', '#3C78D8', '#3D85C6', '#674EA7', '#A64D79'],
+                customColor: null,
+                customColorPreview: null,
+                colorMenuOpen: false,
+            }),
+
+            computed: {
+                formTitle() {
+                    return this.isNewRecord ? "{{_('New Group')}}" : "{{_('Edit Group')}}";
+                },
+                isNewRecord() {
+                    return this.editedIndex === -1;
+                },
+            },
+
+            watch: {
+                dialog(open) {
+                    if (open && !this.isNewRecord && this.editedItem.color) {
+                        this.setCustomColor(this.editedItem.color);
+                    }
+                },
+                colorMenuOpen(isOpen) {
+                    if (isOpen) {
+                        this.customColorPreview = this.customColor ?? this.editedItem.color ?? null;
+                    }
+                },
+            },
+
+            methods: {
+                cancelColorPicker() {
+                    this.colorMenuOpen = false;
+                },
+
+                confirmCustomColor() {
+                    if (this.customColorPreview) {
+                        this.setCustomColor(this.customColorPreview);
+                        this.editedItem.color = this.customColorPreview;
+                    }
+                    this.colorMenuOpen = false;
+                },
+
+                setCustomColor(color) {
+                    if (!color || this.predefinedColors.includes(color)) return;
+                    this.customColor = color;
+                },
+
+                refresh(options) {
+                    this.options = options || { ...this.options, page: 1 };
+                    this.loading = true;
+
+                    api.get(`/admin/api/roles/?page=${this.options.page}&per_page=${this.options.itemsPerPage}`).then(response => {
+                        this.itemsLength = response.data.total;
+                        this.items = response.data.items;
+                    }).finally(() => {
+                        this.loading = false;
+                    });
+                },
+
+                importCSV() {
+                    const reqData = new FormData();
+                    reqData.append('csv', this.csvFile)
+                    api.post('/admin/api/role/import/', reqData).then(response => {
+                        this.imDialog = false;
+                        this.refresh();
+                        this.showSnack(response.data);
+                    })
+                },
+
+                newItem() {
+                    this.editedItem = Object.assign({}, this.defaultItem);
+                    this.setCustomColor(this.defaultItem.color);
+                    this.dialog = true;
+                },
+
+                editItem(item) {
+                    this.editedIndex = this.items.indexOf(item);
+                    this.editedItem = Object.assign({}, item);
+                    this.dialog = true;
+                },
+
+                deleteItem(item) {
+                    const index = this.items.indexOf(item);
+                    const cfm = confirm("{{ _('Are you sure you want to delete this item?') }}")
+                    if (cfm) {
+                        api.delete(`/admin/api/role/${item.id}`)
+                            .then(response => {
+                                this.showSnack(response.data);
+                                this.items.splice(index, 1);
+                                this.refresh();
+                            }).catch(error => {
+                            this.showSnack(error.response.data);
+                        });
+                    }
+                },
+
+                close() {
+                    this.dialog = false;
+                },
+
+                resetState() {
+                    this.dialog = false;
+                    this.editedItem = Object.assign({}, this.defaultItem);
+                    this.editedIndex = -1;
+                    this.customColor = null;
+                },
+
+                save() {
+                    if (!this.isNewRecord) {
+                        Object.assign(this.items[this.editedIndex], this.editedItem);
+                        api.put(`/admin/api/role/${this.editedItem.id}`, {item: this.editedItem})
+                            .then(response => {
+                                this.showSnack(response.data);
+                                this.refresh()
+                                this.close();
+                            });
+                    } else {
+                        api
+                            .post("/admin/api/role/", {item: this.editedItem})
+                            .then(response => {
+                                this.showSnack(response.data);
+                                this.refresh()
+                                this.close()
+                            });
+                    }
+                }
+            }
+        });
+        app.use(router).use(vuetify);
+        router.isReady().then(() => {
+            app.mount('#app');
+            window.app = app;
+        });
+    </script>
+{% endblock %}

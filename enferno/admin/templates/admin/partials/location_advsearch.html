@@ -1,0 +1,8 @@
+<v-dialog v-model="advSearchOpen" width="770">
+    <location-search-box
+            @close="advSearchOpen=false"
+            v-model="q"
+            @search="doSearch"
+    ></location-search-box>
+
+</v-dialog>

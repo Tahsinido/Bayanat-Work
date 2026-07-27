@@ -1,0 +1,99 @@
+<v-navigation-drawer
+        v-model="bulkIncidentDrawer"
+       clipped
+        location="right"
+        temporary
+        width="440"
+>
+    <v-card>
+       <v-toolbar>
+            <v-toolbar-title>{{ _('Bulk Update') }}</v-toolbar-title>
+            <v-spacer></v-spacer>
+                <v-btn
+                    @click="bulkIncidentDrawer = false"
+                    variant="text"
+                    icon="mdi-close"
+            >
+            </v-btn>
+            </v-toolbar>
+            
+            <v-card-text>
+                <div class="d-flex">
+                    <search-field
+                        v-model="bulk.assigned_to_id"
+                        api="/admin/api/users/"
+                        item-title="display_name"
+                        item-value="id"
+                        :return-object="false"
+                        :multiple="false"
+                        label="{{ _('Assigned To') }}"
+                        :disabled="bulk.assigneeClear"
+                    ></search-field>
+                    <v-checkbox v-model="bulk.assigneeClear" @update:model-value="clearAssignee" label="{{ _('Clear Assignee') }}"></v-checkbox>
+                </div>
+            </v-card-text>
+
+            <v-card-text>
+                <div class="d-flex">
+                    <search-field
+                        v-model="bulk.first_peer_reviewer_id"
+                        api="/admin/api/users/"
+                        item-title="display_name"
+                        item-value="id"
+                        :multiple="false"
+                        :return-object="false"
+                        label="{{ _('Peer Reviewer') }}"
+                        :disabled="bulk.reviewerClear"
+                    ></search-field>
+                    <v-checkbox v-model="bulk.reviewerClear" @update:model-value="clearReviewer" label="{{ _('Clear Reviewer') }}"></v-checkbox>
+                </div>
+            </v-card-text>
+            
+            <v-card-text>
+
+                <v-select
+                        :items="statuses"
+                        item-title="tr"
+                        v-model="bulk.status"
+                        item-value="en"
+                        label="{{ _('Status') }}"
+                        clearable
+                ></v-select>
+            </v-card-text>
+
+            <v-card-text v-if="has_role(currentUser,'Admin')">
+                <div class="d-flex">
+                    <search-field
+                            api="/admin/api/roles/"
+                            item-title="name"
+                            item-value="id"
+                            :multiple="true"
+                            label="{{ _('Access Groups') }}"
+                            v-model="bulk.roles"
+                    ></search-field>
+                    <v-checkbox v-model="bulk.rolesReplace" label="{{ _('Replace') }}"></v-checkbox>
+                </div>
+            </v-card-text>
+
+            <v-card-text>
+                    <v-checkbox v-model="bulk.assignRelated" label="{{ _('Assign Related Items') }}"></v-checkbox>
+                    <v-checkbox v-if="has_role(currentUser,'Admin')" v-model="bulk.restrictRelated" label="{{ _('Restrict Related Items') }}"></v-checkbox>
+            </v-card-text>
+            
+            <v-card-text>
+                    <v-textarea
+                            v-model="bulk.comments"
+                            label="{{ _('Comments') }}"
+                            outlined
+                    >
+
+                    </v-textarea>
+            </v-card-text>
+
+            <v-card-actions>
+                <v-spacer></v-spacer>
+                <v-btn @click="bulk_update" color="primary" variant="elevated">{{ _('Bulk Update Incidents') }}</v-btn>
+                <v-spacer></v-spacer>
+            </v-card-actions>
+        </v-card>
+</v-navigation-drawer>

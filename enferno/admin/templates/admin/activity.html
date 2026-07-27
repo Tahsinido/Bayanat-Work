@@ -1,0 +1,466 @@
+{% extends 'layout.html' %}
+
+{% block css %}
+    <link rel="stylesheet" href="/static/js/videojs/video-js.min.css?v={{ config.VERSION }}">
+{% endblock %}
+
+{% block content %}
+
+{% include 'admin/partials/activity_search_viewer.html' %}
+{% include 'admin/partials/activity_bulk_viewer.html' %}
+<v-main>
+  <v-container fluid>
+    <v-card>
+      <v-card-text>
+          <v-data-table-server
+            height="calc(100vh - 260px)"
+            fixed-header
+            :headers="headers"
+            :items="items"
+            :loading="loading"
+            @update:options="refresh"
+            :page="options.page"
+            :items-length="itemsLength"
+            class="elevation-1"
+          >
+            <template v-slot:top>
+              <v-toolbar >
+                <v-toolbar-title>{{ _('System Activity') }}</v-toolbar-title>
+                <v-divider class="mx-4" inset vertical></v-divider>
+                <v-btn @click="toggleAdvSearch" prepend-icon="mdi-ballot">{{ _('Filter Options') }}</v-btn>
+              </v-toolbar>
+            </template>
+
+            <template v-slot:item.created_at="{ item }">
+              ${ formatDate(item.created_at) }
+            </template>
+
+            <template v-slot:item.user_id="{ item }">
+              ${ getUsername(item.user_id) }
+            </template>
+
+            <template v-slot:item.status="{ item }">
+              <v-tooltip text="{{ _('Success')}}">
+                <template v-slot:activator="{ props }">
+                  <v-icon v-bind="props" class="ml-2"
+                          v-if="item.status == 'SUCCESS'" color="success">mdi-check-circle
+                  </v-icon>
+                </template>
+              </v-tooltip>
+
+              <v-tooltip text="{{ _('Denied') }}">
+                <template v-slot:activator="{ props }">
+                  <v-icon v-bind="props" class="ml-2"
+                  v-if="item.status == 'DENIED'" color="error">mdi-cancel
+                  </v-icon>
+                </template>
+              </v-tooltip>
+            </template>
+
+            <template v-slot:item.subject="{item}">
+              <!-- search button -->
+              <v-btn v-if="item.action == 'SEARCH'"
+                variant="outlined"
+                 size="small"
+                class="mx-2"
+                @click="showSearch(item)"
+                prepend-icon="mdi-magnify">
+                {{ _('Show Query') }}
+              </v-btn>
+
+              <v-btn
+                v-else-if="item.action == 'BULK'"
+                class="mx-2"
+                variant="outlined"
+                size="small"
+                @click="showBulk(item)"
+                prepend-icon="mdi-expand-all">
+                {{ _('Show Items') }}
+              </v-btn>
+
+              <!-- A/B/I preview button -->
+              <v-btn
+                v-else-if="['bulletin', 'actor', 'incident'].includes(item.subject.class)"
+                size="small"
+                variant="plain"
+                class="mx-2"
+                @click="previewItem('/admin/api/' + item.subject.class + '/' + item.subject.id + '?mode=3')"
+                >
+
+                <v-icon color="grey darken-2" left
+                v-if="item.subject.class == 'bulletin'">
+                  mdi-file-document-multiple
+                </v-icon>
+                <v-icon color="grey darken-2" left x-small
+                v-if="item.subject.class == 'actor'">
+                  mdi-account-multiple
+                </v-icon>
+                <v-icon color="grey darken-2" left x-small
+                v-if="item.subject.class == 'incident'">
+                  mdi-hazard-lights
+                </v-icon>
+
+                ${item.subject.id}
+              </v-btn>
+
+              <v-chip
+                v-else
+                label
+                color="grey lighten-2"
+                elevation="0"
+                class="mx-2"
+                > ${ item.subject.id }
+              </v-chip>
+
+            </template>
+            <template v-slot:no-data> </template>
+          </v-data-table-server>
+
+          {% include 'admin/partials/activity_advsearch.html' %}
+
+
+      </v-card-text>
+    </v-card>
+
+    <preview-card ref="prev" :item="pitem" v-model="preview"></preview-card>
+
+  </v-container>
+</v-main>
+
+{% endblock %}
+
+{% block outside %}
+
+  <div class="d-none" data-types='{{ actions_types|tojson }}'></div>
+  <div class="d-none" data-user='{{ current_user.to_dict()|tojson }}'></div>
+
+  <div class="d-none" data-itob='{{ itobInfo|tojson }}'></div>
+  <div class="d-none" data-itoa='{{ itoaInfo|tojson }}'></div>
+  <div class="d-none" data-atob='{{ atobInfo|tojson }}'></div>
+  <div class="d-none" data-atoa='{{ atoaInfo|tojson }}'></div>
+  <div class="d-none" data-btob='{{ btobInfo|tojson }}'></div>
+  <div class="d-none" data-itoi='{{ itoiInfo|tojson }}'></div>
+  <div class="d-none" data-statuses='{{ statuses|tojson }}'></div>
+
+{% endblock %}
+
+{% block js %}
+
+<script src="/static/js/tinymce-vue.min.js?v={{ config.VERSION }}"></script>
+
+    <script src="/static/js/dropzone/dropzone.min.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/VueDropzone.js?v={{ config.VERSION }}"></script>
+
+    <script src="/static/js/mixins/media-mixin.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/mixins/form-builder-mixin.js?v={{ config.VERSION }}"></script>
+
+    <script src="/static/js/components/GeoMap.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/GlobalMap.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/EntityFlowMap.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MobilityMap.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/utils/MobilityMapUtils.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/GeoLocations.js?v={{ config.VERSION }}"></script>
+
+    <script src="/static/js/components/UniField.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DualField.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/LabelPath.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/SearchField.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/LabelSearchField.js?v={{ config.VERSION }}"></script>
+
+    <script src="/static/js/components/BulletinCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/ActorProfiles.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/ActorCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/IncidentCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/EventCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MediaCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MediaThumbnail.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/PreviewCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/ReadMore.js?v={{ config.VERSION }}"></script>
+
+    <script src="/static/js/components/BulletinSearchBox.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/ActorSearchBox.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/IncidentSearchBox.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/ActivitySearchBox.js?v={{ config.VERSION }}"></script>
+
+    <script src="/static/js/components/BulletinResult.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/ActorResult.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/IncidentResult.js?v={{ config.VERSION }}"></script>
+
+    <script src="/static/js/components/RelatedBulletinsCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/RelatedActorsCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/RelatedIncidentsCard.js?v={{ config.VERSION }}"></script>
+
+    <script src="/static/js/components/PopDateField.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/PopDateRangeField.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/PopDateTimeField.js?v={{ config.VERSION }}"></script>
+
+    <script src="/static/js/components/MediaGrid.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/PdfViewer.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/NativePdfViewer.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DocxViewer.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/ImageViewer.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/InlineMediaRenderer.js?v={{ config.VERSION }}"></script>
+
+    <script src="/static/js/components/Visualization.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/force-graph.min.js?v={{ config.VERSION }}"></script>
+
+    <script src="/static/js/components/MissingPersonCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MissingPersonField.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MixYesNoField.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MixSelectField.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MixReportersField.js?v={{ config.VERSION }}"></script>
+
+    <script src="/static/js/videojs/video.min.js?v={{ config.VERSION }}"></script>
+
+{% if config.GOOGLE_MAPS_API_KEY %}
+    {{ '<script src="https://maps.googleapis.com/maps/api/js?key='|safe + config.GOOGLE_MAPS_API_KEY + '&loading=async" async defer></script>'|safe }}
+{% endif %}
+<script src="/static/js/Leaflet.GoogleMutant.js?v={{ config.VERSION }}"></script>
+
+
+
+<script nonce="{{ csp_nonce() }}">
+  window.__GOOGLE_MAPS_API_KEY__ = '{{ config.GOOGLE_MAPS_API_KEY }}';
+
+  const {createApp} = Vue;
+  const {createVuetify} = Vuetify;
+  const vuetify = createVuetify(vuetifyConfig);
+
+  const app = createApp({
+    delimiters: delimiters,
+    mixins: [mediaMixin, globalMixin, formBuilderMixin],
+    data: () => ({
+      translations: window.translations,
+      itobInfo: JSON.parse(document.querySelector('[data-itob]').dataset.itob),
+        itoaInfo: JSON.parse(document.querySelector('[data-itoa]').dataset.itoa),
+        itoiInfo: JSON.parse(document.querySelector('[data-itoi]').dataset.itoi),
+        atobInfo: JSON.parse(document.querySelector('[data-atob]').dataset.atob),
+        btobInfo: JSON.parse(document.querySelector('[data-btob]').dataset.btob),
+        atoaInfo: JSON.parse(document.querySelector('[data-atoa]').dataset.atoa),
+
+      currentUser: JSON.parse(`{{ current_user.to_dict()|tojson }}`),
+      dialog: dialog,
+      preview: false,
+      pitem: {},
+      advSearchOpen: false,
+      imDialog: false,
+      drawer: drawer,
+      
+      // search popup vars
+      activitySearchViews: false,
+      searchPanels: 0,
+      searchClass: '',
+      search: [],
+
+      // bulk vars
+      activityBulkViews: false,
+      bulkItems: [],
+
+      loading: true,
+      parentLoading: false,
+      models: ["bulletin", "actor", "incident", "user", "role", "location", "source", "label", "media", "eventtype", "dynamic_field_bulk", "config"],
+      users: JSON.parse(`{{users|tojson}}`),
+      options: {},
+
+      q: {},
+
+      actionTypes : JSON.parse(document.querySelector('[data-types]').dataset.types),
+
+      headers: [
+        { title: "{{_('Date')}}", value: "created_at", width:200, sortable: false },
+        { title: "{{_('User')}}", value: "user_id", width:50, sortable: false },
+        { title: "{{_('Action')}}", value: "action", width:50, sortable: false },
+        { title: "{{_('Status')}}", value: "status", width:50, sortable: false },
+        { title: "{{_('Affected Item')}}", value: "subject", width:50, sortable: false },
+        { title: "{{_('Class')}}", value: "model", width:100, sortable: false },
+        { title: "{{_('Details')}}", value: "details", width:200, sortable: false },
+      ],
+
+      items: [],
+      itemsLength: 10,
+    }),
+
+    computed: {
+      formatSubject: function(val){
+        if (val.length > 1){
+          return val.map(x=> x.class + '-' + x.id)
+
+        } else {
+            if (val.class === 'user') {
+                return val.username;
+            } else {
+                return val.class + '-' + val.id;
+            }
+
+        }
+
+      }
+    },
+
+    watch: {
+      dialog(val) {
+        val || this.close();
+      },
+    },
+
+    mounted () {
+      // populate roles for advanced search for admins
+      // needed for search popup
+      api.get('/admin/api/roles/').then(res => {
+          this.roles = res.data.items;
+      }).catch(e => {
+          this.roles = [];
+          console.error(e.message);
+      });
+    },
+
+    methods: {
+         has_role(user, role) {
+          for (const r of user.roles) {
+              if (r.name == role) {
+                  return true
+              }
+          }
+          return false;
+        },
+
+
+
+        previewItem(endpoint) {
+        api.get(endpoint).then(res => {
+            this.pitem = res.data;
+            this.preview = true;
+          })
+        },
+        getUsername(userId) {
+            return this.users.find(user => user.id === userId)?.username;
+        },
+
+        resetSearch() {
+            this.q = {};
+            this.refresh();
+        },
+
+
+        toggleAdvSearch() {
+
+            this.advSearchOpen = true;
+
+        },
+
+        refresh(options) {
+          this.options = options || { ...this.options, page: 1 };
+
+          if (this.advSearchOpen){
+              this.advSearchOpen = false;
+          }
+
+          this.loading = true;
+                api.post(`/admin/api/activities/`, {
+                    q: this.q,
+                    options: this.options,
+                    model: this.model
+                }).then(response => {
+                    this.itemsLength = response.data.total;
+                    this.items = response.data.items;
+                }).catch(err => {
+                    console.error(err);
+                }).finally(() => {
+                    this.loading = false;
+                });
+        },
+
+        showSearch(item) {
+            this.search = item.subject;
+            this.searchClass = item.model;
+            // incident search has only one query
+            if (this.searchClass !== 'incident') {
+              this.searchPanels = Array.from(this.search.keys());
+            }
+            
+            this.activitySearchViews = true;
+        },
+
+        closeSearch() {
+          this.activitySearchViews = false;
+          this.searchPanels = 0;
+          this.searchClass = '';
+          this.search = [];
+        },
+
+        showBulk(item) {
+            this.bulkItems = item.subject;
+            this.activityBulkViews = true;
+        },
+
+        closeBulk() {
+            this.bulkItems = [];
+            this.activityBulkViews = false;
+        },
+    }
+  });
+
+  app.component('ActivitySearchBox', ActivitySearchBox);
+
+  app.component('SearchField', SearchField);
+  app.component('LabelSearchField', LabelSearchField);
+  app.component('LabelPathList', LabelPathList);
+  app.component('LocationSearchField', LocationSearchField);
+  app.component('UniField', UniField);
+  app.component('DualField', DualField);
+
+  app.component('GeoMap', GeoMap);
+  app.component('GeoLocations', GeoLocations);
+  app.component('GlobalMap', GlobalMap);
+  app.component('EntityFlowMap', EntityFlowMap);
+  app.component('MobilityMap', MobilityMap);
+
+  app.component('BulletinSearchBox', BulletinSearchBox);
+  app.component('ActorSearchBox', ActorSearchBox);
+  app.component('IncidentSearchBox', IncidentSearchBox);
+  app.component('ActorResult', ActorResult);
+  app.component('BulletinResult', BulletinResult);
+  app.component('IncidentResult', IncidentResult);
+
+  app.component('BulletinCard', BulletinCard);
+  app.component('ActorProfiles', ActorProfiles);
+  app.component('ReadMore', ReadMore);
+  app.component('ActorCard', ActorCard);
+  app.component('IncidentCard', IncidentCard);
+  app.component('EventCard', EventCard);
+  app.component('MediaCard', MediaCard);
+  app.component('MediaThumbnail', MediaThumbnail);
+  app.component('PreviewCard', PreviewCard);
+
+  app.component('PopDateField', PopDateField);
+  app.component('PopDateTimeField', PopDateTimeField);
+  app.component('PopDateRangeField', PopDateRangeField);
+
+  app.component('MediaGrid', MediaGrid);
+  app.component('PdfViewer', PdfViewer);
+  app.component('NativePdfViewer', NativePdfViewer);
+  app.component('DocxViewer', DocxViewer);
+  app.component('ImageViewer', ImageViewer);
+  app.component('InlineMediaRenderer', InlineMediaRenderer);
+
+  app.component('RelatedBulletinsCard', RelatedBulletinsCard);
+  app.component('RelatedActorsCard', RelatedActorsCard);
+  app.component('RelatedIncidentsCard', RelatedIncidentsCard);
+
+  app.component('Visualization', Visualization);
+
+  app.component('MixYesNoField', MixYesNoField);
+  app.component('MixSelectField', MixSelectField);
+  app.component('MixReportersField', MixReportersField);
+  app.component('MissingPersonField', MissingPersonField);
+  app.component('MissingPersonCard', MissingPersonCard);
+  app.component('VueDropzone', VueDropzone);
+
+  app.use(router).use(vuetify);
+  router.isReady().then(() => {
+      app.mount('#app');
+      window.app = app;
+  });
+
+</script>
+{% endblock %}

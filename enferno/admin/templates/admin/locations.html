@@ -1,0 +1,554 @@
+{% extends 'layout.html' %} {% block content %}
+
+
+            <v-main>
+                <v-container fluid>
+                    <v-row>
+                        <v-col cols="12">
+                            <v-card>
+                                <v-card-title>
+                                    <div class="flex-grow-1"></div>
+                                </v-card-title>
+
+                                <v-card-text>
+
+                                    <v-data-table-server
+                                            height="calc(100vh - 260px)"
+                                            id="locations-dt"
+                                            fixed-header
+                                            :headers="headers"
+                                            @click:row="rowClick"
+                                            :items="items"
+                                            :loading="loading"
+                                            @update:options="refresh"
+                                            :page="options.page"
+                                            :items-length="itemsLength"
+                                            class="elevation-1"
+                                    >
+                                        <template v-slot:top>
+                                            <v-toolbar color="white" >
+                                                <v-toolbar-title>{{ _('Locations') }}</v-toolbar-title>
+
+                                                <v-text-field
+                                                    variant="outlined"
+                                                    density="compact"
+                                                    class="mt-6"
+                                                    v-model="q.title"
+                                                    clearable
+                                                    @keydown.enter="refresh()"
+                                                    append-icon="mdi-ballot"
+                                                    @click:append="toggleAdvSearch"
+                                                    @click:clear="resetSearch"
+                                                    label="{{ _('Search') }}">
+                                                </v-text-field>
+
+                                                <v-spacer></v-spacer>
+
+                                                <v-btn 
+                                                    @click="newItem"
+                                                    color="primary"
+                                                    variant="elevated"
+                                                    class="ma-2"
+                                                    :disabled="!editAllowed()">
+                                                    {{ _('New Location') }}
+                                                </v-btn>
+
+                                                {% if current_user.has_role('Admin') %}
+                                                        <v-btn
+                                                            @click="imDialog=true"
+                                                            variant="elevated"
+
+                                                            class="ma-2"
+                                                            >
+                                                            {{ _('Import CSV') }}
+                                                        </v-btn>
+                                                    {% endif %}
+
+                                                {% include 'admin/partials/location_dialog.html' %}
+
+                                                <v-dialog
+                                                        v-model="imDialog"
+                                                        width="500">
+
+
+
+                                                    <v-card>
+                                                        <v-card-title>
+                                                            <span class="headline">{{ _('Import CSV') }}</span>
+                                                        </v-card-title>
+
+                                                        <v-card-text>
+                                                            <v-container>
+                                                                <v-row>
+                                                                    <v-col cols="12" md="12">
+                                                                        <v-file-input
+                                                                                v-model="csvFile" show-size
+                                                                                accept=".csv"
+                                                                                label="{{ _('Select CSV File') }}">
+                                                                        </v-file-input>
+                                                                    </v-col>
+                                                                </v-row>
+                                                            </v-container>
+                                                        </v-card-text>
+
+                                                        <v-card-actions>
+                                                            <v-spacer></v-spacer>
+                                                            <v-btn
+                                                                    @click="imDialog=false">
+                                                                {{ _('Cancel') }}
+                                                            </v-btn>
+                                                            <v-btn
+                                                                    @click="importCSV">
+                                                                {{ _('Save') }}
+                                                            </v-btn>
+                                                        </v-card-actions>
+                                                    </v-card>
+                                                </v-dialog>
+                                            </v-toolbar>
+                                        </template>
+
+                                        <template v-slot:item.parent.title="{ item }">
+                                            <div v-if="item.parent">
+                                                <v-btn  size="x-small" variant="plain">
+                                                    ${item.parent.id}
+                                                </v-btn>
+                                                ${item.parent.title}
+                                            </div>
+
+
+                                        </template>
+                                        <template v-slot:item.action="{ item }">
+                                            <v-icon small class="mr-2" @click.stop="editItem(item)"
+                                                    v-if="editAllowed()">
+                                                mdi-pencil
+                                            </v-icon>
+                                            {% if current_user.has_role('Admin') %}
+                                            <v-icon small @click="deleteItem(item)">
+                                                mdi-delete-sweep
+                                            </v-icon>
+                                            {% endif %}
+                                        </template>
+                                        <template v-slot:no-data></template>
+                                    </v-data-table-server>
+
+                                    {% include 'admin/partials/location_advsearch.html' %}
+
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+
+                </v-container>
+            </v-main>
+
+
+    {% include 'admin/partials/location_drawer.html' %}
+
+
+{% endblock %} {% block js %}
+    <script
+           src="/static/js/tinymce/tinymce.min.js?v={{ config.VERSION }}"
+            referrerpolicy="origin">
+    </script>
+    <script src="/static/js/tinymce-vue.min.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/LocationCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/UniField.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/SearchField.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/GeoMap.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/GlobalMap.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DualField.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/LocationSearchBox.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/ReadMore.js?v={{ config.VERSION }}"></script>
+
+    {% if config.GOOGLE_MAPS_API_KEY %}
+        {{ '<script src="https://maps.googleapis.com/maps/api/js?key='|safe + config.GOOGLE_MAPS_API_KEY + '&loading=async" async defer></script>'|safe }}
+
+    {% endif %}
+    <script src="/static/js/Leaflet.GoogleMutant.js?v={{ config.VERSION }}"></script>
+
+    <script nonce="{{ csp_nonce() }}" type="module">
+        import * as jsondiffpatch from '/static/js/jsondiffpatch/jsondiffpatch.esm.min.js'
+        import * as htmlFormatter from '/static/js/jsondiffpatch/formatters/html.js'
+        import '/static/js/jsondiffpatch/formatters/base.js'
+        window.__GOOGLE_MAPS_API_KEY__ = '{{ config.GOOGLE_MAPS_API_KEY }}';
+
+
+         const {createApp} = Vue;
+        const {createVuetify} = Vuetify;
+        const vuetify = createVuetify(vuetifyConfig);
+
+        const app = createApp({
+            delimiters: delimiters,
+            mixins: [globalMixin],
+            data: () => ({
+                validationRules: validationRules,
+                translations: window.translations,
+                adminValid: false,
+                valid: false,
+                search: '',
+                users: [],
+                roles: [],
+                advSearchOpen: false,
+                currentUser: JSON.parse(`{{ current_user.to_dict()|tojson }}`),
+                dialog: dialog,
+                imDialog: false,
+                drawer: drawer,
+                locationDrawer: false,
+                tinyConfig: tinyConfig,
+                locationKey: 1,
+                parentList: [],
+                loading: true,
+                csvFile: null,
+                q: {},
+                options: {},
+
+                headers: [
+                    {title: "{{_('ID')}}", value: "id"},
+                    {title: "{{_('Title')}}", value: "title"},
+                    {title: "{{_('Full Location')}}", value: "full_string"},
+                    {title: "{{_('Parent')}}", value: "parent.title"},
+                    {title: "{{_('Location Type')}}", value: "location_type.title"},
+                    {title: "{{_('Admin Level')}}", value: "admin_level.title"},
+
+                    {% if current_user.roles_in(['Admin','Mod']) or current_user.can_edit_locations %}
+                        {title: "{{_('Actions')}}", value: "action", sortable: false}
+                    {% endif %}
+                ],
+
+                items: [],
+
+                itemsLength: 10,
+                editedIndex: -1,
+
+                locQueryParams: {},
+                editedItem: {
+                    title: "",
+                    parent: {
+                        id: null,
+                        title: ''
+                    }
+
+                },
+                defaultItem: {
+                    title: "",
+                    admin_level: null,
+                    parent: null,
+                },
+                location: {},
+                locationLoader: false,
+                serverErrors: {},
+            }),
+
+            computed: {
+                formTitle() {
+                    return !this.editedItem.id ? "{{_('New Location')}}" : "{{_('Edit Location')}}";
+                }
+            },
+
+            watch: {
+                'editedItem.location_type': function (newLocationType){
+                    this.checkLevel();
+                    this.validateAdminLevel();
+                },
+                'editedItem.admin_level': function (val){
+                    this.validateAdminLevel();
+                },
+
+                locationDrawer: function (val) {
+                    if (val === false) {
+                        this.location = {};
+                        if (this.$route.path !== '/admin/locations/')
+                            this.$router.push('/admin/locations/')
+                    }
+                },
+
+
+                dialog(val) {
+                    val || this.close();
+                },
+
+
+            },
+
+            mounted: function () {
+
+
+                if (this.$route.params.id) {
+                    this.showLocation(this.$route.params.id);
+                }
+
+                this.$router.afterEach((to, from, next) => {
+
+
+                    if (this.$route.params.id) {
+                        this.showLocation(this.$route.params.id);
+                    } else {
+                        this.locationDrawer = false;
+                    }
+
+                })
+
+            },
+
+            methods: {
+                validateAdminLevel() {
+                    const isAdministrative = this.editedItem.location_type?.title === 'Administrative Location';
+                    const hasAdminLevel = !!this.editedItem.admin_level;
+
+                    this.adminValid = !isAdministrative || hasAdminLevel;
+                    this.$refs?.form?.validate();
+                },
+                resetSearch() {
+                    this.q = {};
+                    this.doSearch()
+                },
+                doSearch() {
+                    this.loading = true;
+                    this.options.page = 1;
+
+                    const url = `/admin/api/locations/`;
+
+                    api.post(url, {
+                        q: this.q,
+                        options: this.options
+                    }).then(response => {
+                        //const endTime = new Date()
+                        //this.searchTime = (endTime - startTime) / 1000;
+                        this.itemsLength = response.data.total;
+                        this.items = response.data.items;
+                    }).catch(err => {
+                        console.log(err);
+                        this.showSnack(handleRequestError(err));
+                    }).finally(() => {
+                        this.loading = false;
+                        this.advSearchOpen = false;
+                    });
+
+
+                },
+
+                toggleAdvSearch() {
+                    this.advSearchOpen = true;
+
+                },
+
+                rowClick(e,row) {
+                    const item = row.item;
+                    const path = `/admin/locations/${item.id}`;
+                    if (this.$route.path !== path)
+                        this.$router.push(path);
+
+                },
+                showLocation(id) {
+                    this.locationLoader = true;
+                    this.locationDrawer = true;
+                    api.get(`/admin/api/location/${id}`).then(response => {
+                        this.loading = false;
+                        this.location = response.data;
+                        this.locationLoader = false;
+                    }).catch(error => {
+                        this.locationDrawer = false;
+                        this.locationLoader = false;
+                        this.showSnack(handleRequestError(error));
+                    });
+                },
+                restrictSearch() {
+                    if (this.editedItem.location_type?.title === 'Administrative Location' 
+                        && !!this.editedItem.admin_level
+                    ) {
+                        const restrict = this.editedItem.admin_level.code - 1;
+                        if (this.editedItem.parent?.admin_level.code !== restrict) {
+                            // clear parent location
+                            this.editedItem.parent = null;
+                        }
+                        this.locQueryParams = {lvl: restrict};
+                    } else {
+                        this.locQueryParams = {};
+                    }
+                },
+
+                has_role(user, role) {
+                    return user.roles.some(r => r.name === role);
+                },
+
+
+                editAllowed() {
+                    if (this.has_role(this.currentUser, 'Admin')) {
+                        return true;
+                    } else if (this.has_role(this.currentUser, 'Mod')) {
+                        return true;
+                    } else if (this.currentUser.can_edit_locations) {
+                        return true
+                    }
+                    return false;
+                },
+
+                checkLevel() {
+                    if (this.editedItem.location_type?.title !== 'Administrative Location') {
+                        this.editedItem.admin_level = null;
+                    }
+                },
+
+                preprocess(items) {
+                    // adjust title
+                    for (const i of items) {
+                        i.ctitle = i.id + ' | ' + i.title;
+                    }
+                    ;
+                    return items;
+                },
+
+                refresh(options) {
+                    this.options = options || { ...this.options, page: 1 };
+                    this.loading = true;
+                    api.post(`/admin/api/locations/`, {
+                        q: this.q,
+                        options: this.options
+                    }).then(response => {
+
+
+                        this.itemsLength = response.data.total;
+                        this.items = this.preprocess(response.data.items);
+                    }).catch(err => {
+                        console.log(err.response.data);
+                        this.showSnack(handleRequestError(err));
+                    })
+                        .finally(() => {
+                            this.loading = false;
+                        });
+                },
+
+                importCSV() {
+                    const reqData = new FormData();
+                    reqData.append('csv', this.csvFile)
+                    api.post('/admin/api/location/import/', reqData).then(response => {
+
+                        this.imDialog = false;
+                        this.refresh();
+                        this.showSnack(response.data);
+
+                    })
+                },
+
+                newItem() {
+
+                    this.editedItem = JSON.parse(JSON.stringify(this.defaultItem));
+                    this.dialog = true;
+                    this.$nextTick(() => {
+                        this.locationKey += 1;
+                    })
+
+                },
+
+                editItem(item) {
+                    this.locationDrawer = false;
+                    this.editedIndex = this.items.indexOf(item);
+                    this.editedItem = Object.assign({}, item);
+                    this.restrictSearch()
+                    this.dialog = true;
+                    this.$nextTick(() => {
+                        this.locationKey += 1;
+                    });
+
+                },
+
+                deleteItem(item) {
+                    const index = this.items.indexOf(item);
+                    const cfm = confirm("{{ _('Are you sure you want to delete this item?') }}") &&
+                        this.items.splice(index, 1);
+                    if (cfm) {
+                        api.delete(`/admin/api/location/${item.id}`)
+                            .then(response => {
+                                this.showSnack(response.data);
+                                this.refresh()
+                            })
+                    }
+                },
+
+                confirmClose() {
+                    if (confirm(translations.confirm_)) {
+                        this.dialog = false;
+                        setTimeout(() => {
+                            this.editedItem = Object.assign({}, this.defaultItem);
+                            this.editedIndex = -1;
+                        }, 300);
+                    }
+                },
+
+                close() {
+                    this.dialog = false;
+                    setTimeout(() => {
+                        this.editedItem = Object.assign({}, this.defaultItem);
+                        this.editedIndex = -1;
+                        this.serverErrors = {};
+                    }, 300);
+                },
+
+                save() {
+                    if (!this.editedItem.latlng?.lat) {
+                        this.editedItem.latlng = null;
+                    }
+                    if (this.editedItem.id) {
+                        api.put(`/admin/api/location/${this.editedItem.id}`, {
+                            item: this.editedItem
+                        })
+                            .then(response => {
+                                this.showSnack(response.data);
+                                this.refresh();
+                                this.close();
+                            }).catch(err => {
+                            console.error(err.response?.data);
+                            this.showSnack(handleRequestError(err));
+                            this.serverErrors = err.response?.data?.errors || {};
+                            this.$nextTick(() => scrollToFirstError());
+                        })
+                    } else {
+                        //create new record
+                        api.post("/admin/api/location/", {item: this.editedItem})
+                            .then(response => {
+                                this.showSnack(response.data);
+                                this.refresh();
+                                this.close();
+                            }).catch(err => {
+                            console.error(err.response?.data);
+                            this.showSnack(handleRequestError(err));
+                            this.serverErrors = err.response?.data?.errors || {};
+                            this.$nextTick(() => scrollToFirstError());
+                        })
+                    }
+                },
+                
+                validateForm() {
+                    this.$refs.form.validate().then(({ valid, errors }) => {
+                        if (valid) {
+                            this.save();
+                        } else {
+                            this.showSnack("{{ _('Please review the form for errors.')}}")
+                            scrollToFirstError()
+                        }
+                    });
+                }
+            }
+        });
+
+        app.config.globalProperties.$jsondiffpatch = jsondiffpatch;
+        app.config.globalProperties.$htmlFormatter = htmlFormatter;
+        
+        app.component("TinymceEditor", Editor);
+        app.component('LocationCard', LocationCard);
+        app.component('LocationSearchBox', LocationSearchBox);
+        app.component('UniField', UniField);
+        app.component('SearchField', SearchField);
+        app.component('LocationSearchField', LocationSearchField);
+        app.component('DualField', DualField);
+        app.component('GeoMap', GeoMap);
+        app.component('GlobalMap', GlobalMap);
+        app.component('ReadMore', ReadMore);
+
+        app.use(router).use(vuetify);
+        router.isReady().then(() => {
+            app.mount('#app');
+            window.app = app;
+        });
+    </script>
+{% endblock %}

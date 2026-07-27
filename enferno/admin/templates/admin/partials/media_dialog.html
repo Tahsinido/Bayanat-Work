@@ -1,0 +1,105 @@
+<snapshot-dialog v-model="snapshotDialog" v-bind="leftDialogProps || { 'max-width': '500px' }"></snapshot-dialog>
+
+<v-dialog v-model="mediaDialog" v-bind="leftDialogProps || { 'max-width': '500px' }">
+  <template #activator="{props}">
+    <v-card>
+      <v-toolbar class="handle">
+        <v-toolbar-title>{{ _('Media') }}</v-toolbar-title>
+        <v-spacer></v-spacer>
+
+        <v-btn
+          v-if="expandedByRenderer?.['media-dialog']?.mediaType === 'video'"
+          icon="mdi-camera"
+          @click="initCroppr('media-dialog');"
+        ></v-btn>
+        <v-btn class="mx-2 white--text" icon="mdi-plus-circle" color="primary" @click="addMedia">
+          <v-icon dark></v-icon>
+        </v-btn>
+      </v-toolbar>
+
+      <v-card-text class="px-0 pt-0">
+        <inline-media-renderer
+          renderer-id="media-dialog"
+          :media="expandedByRenderer?.['media-dialog']?.media"
+          :media-type="expandedByRenderer?.['media-dialog']?.mediaType"
+          :initial-orientation="expandedByRenderer?.['media-dialog']?.media?.orientation || 0"
+          :use-metadata="true"
+          class="mb-4"
+          content-style="height: calc(100vh - 450px);"
+          @ready="onMediaRendererReady"
+          @fullscreen="handleFullscreen('media-dialog')"
+          @close="closeExpandedMedia('media-dialog')"
+        ></inline-media-renderer>
+
+        <!--  Grid of Media Items -->
+        <media-grid
+          :horizontal="Boolean(expandedByRenderer?.['media-dialog']?.media)"
+          prioritize-videos
+          :mini-mode="Boolean(expandedByRenderer?.['media-dialog']?.media)"
+          enable-delete
+          :medias="editedItem.medias"
+          @media-click="handleExpandedMedia({ rendererId: 'media-dialog', ...$event }); this.$refs.bulletinDialogSplitViewRef?.resetToCenter()"
+          @remove-media="removeMedia"
+          @remove-redaction="removeRedaction($event)"
+        ></media-grid>
+      </v-card-text>
+    </v-card>
+  </template>
+  <v-card class="flex-grow-1">
+    <v-toolbar color="dark-primary">
+      <v-toolbar-title>{{ _('Media File') }}</v-toolbar-title>
+      <v-spacer></v-spacer>
+
+      <template #append>
+        <v-btn variant="elevated" class="mx-2" :disabled="!enableAttach" @click="attachMedia"
+          >{{ _('Attach Media') }}</v-btn
+        >
+        <v-btn icon="mdi-close" @click="closeMediaDialog"></v-btn>
+      </template>
+    </v-toolbar>
+    <v-card-text>
+      <v-container>
+        <v-row>
+          <v-col cols="12">
+            <vue-dropzone
+              ref="dropzone"
+              id="dropzone"
+              :options="dzOpts"
+              @ready="onDropzoneReady"
+              @vdropzone-error="showError"
+              @vdropzone-removed-file="fileRemoved"
+              @vdropzone-file-added="fileAdded"
+              @vdropzone-success="uploadSuccess"
+            ></vue-dropzone>
+          </v-col>
+        </v-row>
+        <v-row>
+          <v-col cols="12" md="6">
+            <dual-field
+              v-model:original="editedMedia.title"
+              v-model:translation="editedMedia.title_ar"
+              label-original="{{ _('Title') }}"
+              label-translation="{{ _('Title (AR)') }}"
+            >
+            </dual-field>
+          </v-col>
+
+          <v-col cols="12" md="6">
+            <v-card class="d-flex" variant="text">
+              <!-- category -->
+
+              <search-field
+                label="{{ _('Media Category') }}"
+                api="/admin/api/mediacategories"
+                v-model="editedMedia.category"
+                item-title="title"
+                item-value="id"
+              >
+              </search-field>
+            </v-card>
+          </v-col>
+        </v-row>
+      </v-container>
+    </v-card-text>
+  </v-card>
+</v-dialog>

@@ -1,0 +1,341 @@
+{% extends 'layout.html' %}
+{% block css %}
+<link rel="stylesheet" href="/static/js/videojs/video-js.min.css?v={{ config.VERSION }}">
+{% endblock %}
+{% block content %}
+
+            {% include 'log_dialog.html' %}
+
+            <v-main>
+                <v-container fluid>
+                            <v-card>
+                                <v-card-text>
+
+                                    <v-data-table-server
+                                            fixed-header
+                                            height="calc(100vh - 260px)"
+                                            id="log-dt"
+                                            v-model="selected"
+                                            :headers="headers"
+                                            @click:row="rowClick"
+                                            :items="items"
+                                            v-model:options="options"
+                                            :loading="loading"
+                                            :items-length="itemsLength"
+                                            @update:options="refresh"
+                                            :page="options.page"
+                                            class="elevation-1"
+                                    >
+
+                                        <template v-slot:top>
+                                            <v-toolbar flat color="white">
+                                                <v-toolbar-title>{{ _('Import Log') }}</v-toolbar-title>
+                                                <v-spacer></v-spacer>
+                                            </v-toolbar>
+                                        </template>
+
+                                        <template v-slot:item.expires_on="{item}">
+                                            ${formatDate(item.expires_on, dateFormats.standardDatetime, dateOptions.local)}
+                                        </template>
+
+                                        <template v-slot:item.created_at="{item}">
+                                            ${formatDate(item.created_at, dateFormats.standardDatetime, dateOptions.local)}
+                                        </template>
+
+                                        <template v-slot:item.imported_at="{item}">
+                                            ${formatDate(item.imported_at, dateFormats.standardDatetime, dateOptions.local)}
+                                        </template>
+
+                                        <template v-slot:item.status="{item}">
+                                          <import-log-status :item="item"></import-log-status>
+                                        </template>
+
+                                        <template v-slot:item.preview="{item}">
+                                            <v-btn
+                                                v-if="item.table=='bulletin' && item.item_id > 0"
+                                                @click.stop="previewItem('/admin/api/bulletin/'+item.item_id)"
+                                                elevation="0"
+                                                class="mx-2"
+                                                prepend-icon="mdi-file-document-multiple"
+                                            >
+                                                ${item.item_id}
+                                            </v-btn>
+
+                                            <v-btn
+                                                v-if="item.table=='actor' && item.item_id > 0"
+                                                @click.stop="previewItem('/admin/api/actor/'+item.item_id)"
+                                                elevation="0"
+                                                class="mx-2"
+                                                prepend-icon="mdi-account-multiple"
+                                            >
+                                                ${item.item_id}
+                                            </v-btn>
+                                        </template>
+
+                                    </v-data-table-server>
+
+                                </v-card-text>
+                            </v-card>
+
+                            <preview-card ref="prev" :item="pitem" v-model="preview"></preview-card>
+
+
+
+                </v-container>
+            </v-main>
+
+
+
+            <v-overlay v-model="loading">
+            </v-overlay>
+
+
+{% endblock %}
+
+{% block js %}
+
+<script src="/static/js/mixins/media-mixin.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/mixins/relations-mixin.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/mixins/form-builder-mixin.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/LabelPath.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/BulletinCard.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/ActorProfiles.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/ActorCard.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/ReadMore.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/IncidentCard.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/EventCard.js?v={{ config.VERSION }}"></script>
+
+<script src="/static/js/components/MediaCard.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/MediaThumbnail.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/BulletinResult.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/ActorResult.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/IncidentResult.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/UniField.js?v={{ config.VERSION }}"></script>
+
+<script src="/static/js/components/RelatedBulletinsCard.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/RelatedActorsCard.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/RelatedIncidentsCard.js?v={{ config.VERSION }}"></script>
+
+<script src="/static/js/components/PdfViewer.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/NativePdfViewer.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/DocxViewer.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/ImageViewer.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/InlineMediaRenderer.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/GlobalMap.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/EntityFlowMap.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/MobilityMap.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/utils/MobilityMapUtils.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/Visualization.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/videojs/video.min.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/force-graph.min.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/PreviewCard.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/ImportLogStatus.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/ImportLogCard.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/MissingPersonCard.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/MediaGrid.js?v={{ config.VERSION }}"></script>
+
+{% if config.GOOGLE_MAPS_API_KEY %}
+    {{ '<script src="https://maps.googleapis.com/maps/api/js?key='|safe + config.GOOGLE_MAPS_API_KEY + '&loading=async" async defer></script>'|safe }}
+{% endif %}
+<script src="/static/js/Leaflet.GoogleMutant.js?v={{ config.VERSION }}"></script>
+
+    <script nonce="{{ csp_nonce() }}">
+        window.__GOOGLE_MAPS_API_KEY__ = '{{ config.GOOGLE_MAPS_API_KEY }}';
+
+        const {createApp} = Vue;
+        const {createVuetify} = Vuetify;
+        const vuetify = createVuetify(vuetifyConfig);
+
+        const app = createApp({
+            delimiters: delimiters,
+            mixins: [globalMixin, mediaMixin, relationsMixin, formBuilderMixin],
+            data: () => ({
+
+                translations: translations,
+                currentUser: JSON.parse(`{{ current_user.to_dict()|tojson }}`),
+                drawer: drawer,
+                q: {},
+                logDialog: false,
+                logLoader: true,
+                preview: false,
+                pitem: null,
+                eitem: {},
+                mode: null,
+                loading: false,
+                status: '',
+                items: [],
+                itemsLength: 10,
+                selected: [],
+                options: {},
+
+                headers: [
+                    {title: "{{_('ID')}}", value: 'id', sortable: false},
+                    {title: "{{_('User')}}", value: 'user.name', sortable: false},
+                    {title: "{{_('Table')}}", value: 'table', sortable: false},
+                    {title: "{{_('Item')}}", value: 'preview', sortable: false},
+                    {title: "{{_('Status')}}", value: 'status', sortable: false},
+                    {title: "{{_('File')}}", value: 'file', sortable: false},
+                    {title: "{{_('Format')}}", value: 'file_format', sortable: false},
+                    {title: "{{_('Batch ID')}}", value: 'batch_id', sortable: false},
+                    {title: "{{_('Requested Time')}}", value: 'created_at', sortable: false},
+                    {title: "{{_('Import Time')}}", value: 'imported_at', sortable: false},
+                ],
+
+            }),
+
+        watch: {
+                logDialog: function (val) {
+                if (val === false) {
+
+                    if (this.$route.path !== '/import/log/')
+                        this.$router.push('/import/log/')
+                }
+            },
+
+
+        },
+
+
+        mounted () {
+            if (this.$route.params.id) {
+                this.showLog(this.$route.params.id);
+            }
+
+            if (this.$route.query.batch_id) {
+                this.filterBatch(this.$route.query.batch_id);
+            }
+
+            this.$router.afterEach((to, from, next) => {
+
+                if (this.$route.query.batch_id) {
+                    this.filterBatch(this.$route.query.batch_id);
+                }
+
+                if (this.$route.params.id) {
+                    this.showLog(this.$route.params.id);
+                } else {
+                    this.logDialog = false;
+                }
+            })
+        },
+        methods: {
+            refresh(options) {
+                this.options = options || { ...this.options, page: 1 };
+                this.loading = true;
+                let url = `/import/api/imports/?page=${this.options.page}&per_page=${this.options.itemsPerPage}`;
+
+                api.post(url, {
+                    q: this.q,
+                    options: this.options
+                }).then(response => {
+                    this.loading = false;
+                    this.itemsLength = response.data.total;
+                    this.items = response.data.items;
+                }).catch(error => {
+                    console.error(error.response?.data);
+                }).finally(() => {
+                    this.loading = false;
+                });
+            },
+
+            filterBatch(batch_id) {
+                this.q = {batch_id: batch_id};
+                this.refresh()
+            },
+
+            rowClick(e,row) {
+                const item = row.item;
+                const path = `/import/log/${item.id}`;
+                if (this.$route.path !== path)
+                    this.$router.push(path);
+
+                this.logLoader = true;
+                this.logDialog = true;
+                api.get(`/import/api/imports/${item.id}`).then(response => {
+                    this.eitem = response.data;
+                }).catch(error => {
+                    this.logDialog = false;
+                    this.showSnack("{{_('Oops! We couldn\'t find this item.')}}")
+                }).finally(()=>{
+                    this.logLoader = false;
+                });
+
+            },
+
+            showLog(id) {
+                this.logLoader = true;
+                this.logDialog = true;
+                api.get(`/import/api/imports/${id}`).then(response => {
+                    this.eitem = response.data;
+                }).catch(error => {
+                    this.logDialog = false;
+                    this.showSnack("{{_('Oops! We couldn\'t find this item.')}}")
+                }).finally(()=>{
+                    this.logLoader = false;
+                });
+            },
+
+            editAllowed() {
+                    return false;
+            },
+
+            previewItem(endpoint) {
+                api.get(endpoint).then(res => {
+                    this.pitem = res.data;
+                    this.preview = true;
+                })
+            },
+
+            close() {
+
+                this.logDialog = false;
+                setTimeout(() => {
+                    this.eitem = {};
+                }, 300);
+
+            },
+
+
+        }
+    });
+
+
+        app.component('ImportLogStatus', ImportLogStatus);
+        app.component('MediaCard', MediaCard);
+        app.component('MediaThumbnail', MediaThumbnail);
+        app.component('BulletinResult', BulletinResult);
+        app.component('ActorResult', ActorResult);
+        app.component('IncidentResult', IncidentResult);
+        app.component('UniField', UniField);
+        app.component('PdfViewer', PdfViewer);
+        app.component('NativePdfViewer', NativePdfViewer);
+        app.component('DocxViewer', DocxViewer);
+        app.component('ImageViewer', ImageViewer);
+        app.component('InlineMediaRenderer', InlineMediaRenderer);
+        app.component('GlobalMap', GlobalMap);
+        app.component('EntityFlowMap', EntityFlowMap);
+        app.component('MobilityMap', MobilityMap);
+        app.component('Visualization', Visualization);
+        app.component('PreviewCard', PreviewCard);
+        app.component('ImportLogCard', ImportLogCard);
+        app.component('BulletinCard', BulletinCard);
+        app.component('ActorProfiles', ActorProfiles);
+        app.component('ActorCard', ActorCard);
+        app.component('ReadMore', ReadMore);
+        app.component('IncidentCard', IncidentCard);
+        app.component('EventCard', EventCard);
+        app.component('MediaGrid', MediaGrid);
+
+        app.component('RelatedBulletinsCard', RelatedBulletinsCard);
+        app.component('RelatedActorsCard', RelatedActorsCard);
+        app.component('RelatedIncidentsCard', RelatedIncidentsCard);
+
+        app.component('MissingPersonCard', MissingPersonCard);
+
+        app.use(router).use(vuetify);
+        router.isReady().then(() => {
+            app.mount('#app');
+            window.app = app;
+        });
+    </script>
+{% endblock %}

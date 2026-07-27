@@ -1,0 +1,35 @@
+
+<v-dialog :retain-focus="false" no-click-animation persistent v-model="logDialog" fullscreen>
+
+    <v-card v-if="logDialog" class="overflow-hidden">
+
+        <v-toolbar>
+            <v-toolbar-title>{{ _('Log') }} ${eitem.id}</v-toolbar-title>
+            <v-spacer></v-spacer>
+
+            <v-btn icon="mdi-close" @click="close"></v-btn>
+
+        </v-toolbar>
+
+        <v-sheet
+                id="card-content"
+                max-height="100vh"
+                class="overflow-y-auto pt-11">
+
+                <v-container v-if="logLoader"  fluid fill-height>
+                    <v-layout justify-center align-center>
+                      <v-progress-circular indeterminate size="44"></v-progress-circular>
+                    </v-layout>
+                  </v-container>
+                
+                  <div v-else>
+                    <!-- @ emit events passed to card to approve, reject and set expiry datetime -->
+                      <import-log-card :log="eitem" ></import-log-card>
+                
+                  </div>
+
+        </v-sheet>
+    </v-card>
+
+</v-dialog>
+

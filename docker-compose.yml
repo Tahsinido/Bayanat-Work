@@ -1,0 +1,140 @@
+services:
+  postgres:
+    container_name: postgres
+    # PG major upgrades (15 -> 16) require a dump/restore of postgres_data
+    image: 'postgis/postgis:16-3.5@sha256:a780ff6331b384e4c6d1033d5c42f4fe1270721b3e19260448241fa1b64a7637'
+    # postgis/postgis publishes amd64 only; runs emulated on ARM hosts
+    platform: linux/amd64
+    user: postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - 'postgres_data:/var/lib/postgresql/data:rw'
+    expose:
+      - '5432'
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /var/run/postgresql
+    healthcheck:
+      test: "pg_isready -d ${POSTGRES_DB} -U ${POSTGRES_USER}"
+      interval: 3s
+      retries: 10
+
+  redis:
+    container_name: redis
+    image: 'redis:7.4-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99'
+    user: redis
+    expose:
+      - '6379'
+    # password is read from the mounted secret, never passed via argv
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    # password is written to a config file in-container, never passed via argv
+    command: sh -c 'echo "requirepass $$REDIS_PASSWORD" > /tmp/redis.conf && exec redis-server /tmp/redis.conf'
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    volumes:
+      - 'redis_data:/data:rw'
+    healthcheck:
+      test: [ "CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG" ]
+      interval: 3s
+      retries: 10
+
+  bayanat:
+    container_name: bayanat
+    build:
+      context: .
+      dockerfile: ./flask/Dockerfile
+      args:
+        - ROLE=flask
+    volumes:
+      - '${PWD}/backups:/app/backups/:rw'
+      - '${MEDIA_PATH:-./enferno/media}:/app/enferno/media/:rw'
+      - '${PWD}/enferno/imports:/app/enferno/imports/:rw'
+      - '${PWD}/logs/:/app/logs/:rw'
+      - '${PWD}/config.json:/app/config.json:rw'
+      - '${PWD}/${ENV_FILE:-.env.docker}:/app/.env:ro'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    expose:
+      - '5000'
+
+  celery:
+    container_name: celery
+    build:
+      context: .
+      dockerfile: ./flask/Dockerfile
+      args:
+        - ROLE=celery
+    volumes_from:
+      - bayanat
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-ocr:
+    container_name: celery-ocr
+    build:
+      context: .
+      dockerfile: ./flask/Dockerfile
+      args:
+        - ROLE=celery-ocr
+    volumes_from:
+      - bayanat
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nginx:
+    container_name: nginx
+    restart: always
+    build:
+      context: ./nginx
+    ports:
+      - '80:8080'
+    volumes:
+      - './enferno/static/:/app/static/:ro'
+    depends_on:
+      - bayanat
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz" ]
+      interval: 10s
+      retries: 5
+
+volumes:
+  redis_data:
+  postgres_data:

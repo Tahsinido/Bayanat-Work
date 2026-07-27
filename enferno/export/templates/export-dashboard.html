@@ -1,0 +1,364 @@
+{% extends 'layout.html' %}
+{% block css %}
+<link rel="stylesheet" href="/static/js/videojs/video-js.min.css?v={{ config.VERSION }}">
+{% endblock %}
+{% block content %}
+
+    <v-main>
+        <v-container fluid>
+            <v-card>
+                <v-card-text>
+
+                    <v-data-table-server
+                            fixed-header
+                            height="calc(100vh - 260px)"
+                            id="export-dt"
+                            v-model="selected"
+                            :headers="headers"
+                            @click:row="rowClick"
+                            show-select
+                            :items="items"
+                            @update:options="refresh"
+                            :page="options.page"
+                            :loading="loading"
+                            :items-length="itemsLength"
+                            class="elevation-1"
+                    >
+
+                        <template v-slot:top>
+                            <v-toolbar flat color="white">
+                                <v-toolbar-title>{{ _('Exports') }}</v-toolbar-title>
+                                <v-spacer></v-spacer>
+
+                            </v-toolbar>
+                        </template>
+
+                        <template v-slot:item.expires_on="{item}">
+                            ${ formatDate(item.expires_on, dateFormats.standardDatetime, dateOptions.local) }
+
+                        </template>
+
+                        <template v-slot:item.created_at="{item}">
+                            ${ formatDate(item.created_at, dateFormats.standardDatetime, dateOptions.local) }
+
+                        </template>
+
+                        <template v-slot:item.download="{item}">
+
+                            <export-download :item="item"></export-download>
+
+                        </template>
+
+                                    <template v-slot:item.format="{item}">
+                                        <v-tooltip location="top" :text="item.file_format.toUpperCase()">
+                                            <template #activator="{ props }">
+                                        <v-icon v-bind="props" class="ml-2" v-if="item.file_format === 'json'">mdi-code-json</v-icon>
+
+                                        <v-icon v-bind="props" class="ml-2" v-if="item.file_format === 'pdf'">mdi-file-pdf-box</v-icon>
+
+                                        <v-icon v-bind="props" class="ml-2" v-if="item.file_format === 'csv'">
+                                            mdi-file-delimited-outline
+                                        </v-icon>
+                                            </template>
+                                        </v-tooltip>
+
+                        </template>
+
+                                    <template v-slot:item.media="{item}">
+                                        <v-tooltip location="top" text="{{ _('Include Media') }}">
+                                            <template #activator="{ props }">
+                                        <v-icon class="ml-2"
+                                                v-if="item.include_media" color="success">mdi-check-circle
+                                        </v-icon>
+                                            </template>
+                                        </v-tooltip>
+                                        <v-tooltip location="top" text="{{ _('Do not include Media') }}">
+                                            <template #activator="{ props }">
+
+                                        <v-icon v-bind="props" class="ml-2"
+                                                v-if="!item.include_media">mdi-close-circle
+                                        </v-icon>
+                                            </template>
+                                        </v-tooltip>
+
+                        </template>
+
+                    </v-data-table-server>
+
+                </v-card-text>
+            </v-card>
+
+            <preview-card ref="prev" :item="pitem" v-model="preview"></preview-card>
+
+
+        </v-container>
+    </v-main>
+
+{% include 'export_drawer.html' %}
+    <v-overlay v-model="loading">
+    </v-overlay>
+
+{% endblock %}
+
+{% block js %}
+    <script src="/static/js/videojs/video.min.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/mixins/media-mixin.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/mixins/relations-mixin.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/mixins/form-builder-mixin.js?v={{ config.VERSION }}"></script>
+
+    <script src="/static/js/components/ExportCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/PreviewCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/LabelPath.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/BulletinCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/ActorProfiles.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/ActorCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/ReadMore.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/IncidentCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/InlineMediaRenderer.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/ImageViewer.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/PdfViewer.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/NativePdfViewer.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DocxViewer.js?v={{ config.VERSION }}"></script>
+
+    <script src="/static/js/components/BulletinResult.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/ActorResult.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/IncidentResult.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/ExportDownload.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MissingPersonCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MediaCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MediaThumbnail.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/RelatedIncidentsCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/RelatedActorsCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/RelatedBulletinsCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MediaGrid.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/EventCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/GlobalMap.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/EntityFlowMap.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MobilityMap.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/utils/MobilityMapUtils.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/UniField.js?v={{ config.VERSION }}"></script>
+    <script nonce="{{ csp_nonce() }}">
+
+        const {createApp} = Vue;
+        const {createVuetify} = Vuetify;
+        const vuetify = createVuetify(vuetifyConfig);
+
+        const app = createApp({
+            delimiters: delimiters,
+
+            mixins: [mediaMixin, globalMixin, relationsMixin, formBuilderMixin],
+
+            data: () => ({
+                translations: window.translations,
+
+                currentUser: JSON.parse(`{{ current_user.to_dict()|tojson }}`),
+                drawer: drawer,
+                exportDrawer: false,
+                exportLoader: true,
+                preview: false,
+                pitem: null,
+                eitem: {},
+                mode: null,
+                loading: false,
+                status: '',
+                items: [],
+                itemsLength: 10,
+                selected: [],
+                options: {},
+                headers: [
+                    {title: "{{_('ID')}}", value: 'id', sortable: false},
+                    {title: "{{_('Requester')}}", value: 'requester.name', sortable: false},
+                    {title: "{{_('Table')}}", value: 'table', sortable: false},
+                    {title: "{{_('# of items')}}", value: 'items.length', sortable: false},
+                    {title: "{{_('Format')}}", value: 'format', sortable: false},
+                    {title: "{{_('Include Media')}}", value: 'media', sortable: false},
+                    {title: "{{_('Requested time')}}", value: 'created_at', sortable: false},
+                    {title: "{{_('Expiry time')}}", value: 'expires_on', sortable: false},
+                    {title: "{{_('Status')}}", value: 'status', sortable: false},
+                    {title: "{{_('Download')}}", value: 'download', sortable: false},
+                ],
+
+            }),
+
+            watch: {
+                exportDrawer: function (val) {
+                    if (val === false) {
+
+                        if (this.$route.path !== '/export/dashboard/')
+                            this.$router.push('/export/dashboard/')
+                    }
+                },
+
+
+            },
+
+
+            mounted() {
+                if (this.$route.params.id) {
+                    this.showExport(this.$route.params.id);
+                }
+
+                this.$router.afterEach((to, from, next) => {
+
+                    if (this.$route.params.id) {
+                        this.showExport(this.$route.params.id);
+                    } else {
+                        this.exportDrawer = false;
+                    }
+                })
+            },
+            methods: {
+                rowClick(e, row) {
+                    const item = row.item;
+                    const path = `/export/dashboard/${item.id}`;
+                    if (this.$route.path !== path)
+                        this.$router.push(path);
+
+                },
+
+                showExport(id) {
+                    this.exportLoader = true;
+                    this.exportDrawer = true;
+                    api.get(`/export/api/export/${id}`).then(response => {
+                        this.eitem = response.data;
+                    }).catch(error => {
+                        this.exportDrawer = false;
+                        this.showSnack("{{ _('Oops! We couldn\'t find this item.')}}")
+                    }).finally(() => {
+                        this.exportLoader = false;
+                    });
+                },
+
+                showActions(item) {
+                    return !(item.status === 'Approved' || item.status === 'Rejected' || item.status === 'Expired');
+                },
+
+                approveExport(exportId) {
+
+                    const data = {
+                        exportId: exportId,
+                        action: 'approve'
+                    }
+
+                    api.put('/export/api/exports/status', data).then(res => {
+                        // close drawer
+                        this.exportDrawer = false;
+                        this.refresh();
+                        this.showSnack(res.data);
+
+                    }).catch(error => {
+
+                    }).finally(() => {
+
+                    })
+                },
+
+                rejectExport(exportId) {
+                    const data = {
+                        exportId: exportId,
+                        action: 'reject'
+                    }
+
+                    api.put('/export/api/exports/status', data).then(res => {
+                        // close drawer
+                        this.exportDrawer = false;
+                        this.refresh();
+                        this.showSnack(res.data);
+
+                    }).catch(error => {
+
+                    }).finally(() => {
+
+                    })
+
+                },
+
+                setExpiry(exportId, newDate) {
+                    const utc_expiry = new Date(newDate).toISOString();
+
+                    const data = {
+                        exportId: exportId,
+                        expiry: utc_expiry
+                    }
+
+                    api.put('/export/api/exports/expiry', data).then(res => {
+                        // close drawer
+                        this.exportDrawer = false;
+                        this.refresh();
+                        this.showSnack(res.data);
+                    }).catch(err => {
+                        console.log(err.response.data);
+                    })
+                },
+
+                previewItem(endpoint) {
+                    api.get(endpoint).then(res => {
+                        this.pitem = res.data;
+                        this.preview = true;
+                    })
+                },
+
+                editAllowed() {
+                    return false;
+                },
+
+                refresh(options) {
+                    this.options = options || { ...this.options, page: 1 };
+                    this.loading = true;
+
+                    api.post('/export/api/exports/', {
+                        page: this.options.page,
+                        per_page: this.options.itemsPerPage
+                    }).then(res => {
+
+
+                        this.items = res.data.items;
+                        this.itemsLength = res.data.total;
+
+
+                    }).catch(error => {
+                        console.error(error.response?.data);
+                    }).finally(() => {
+                        this.loading = false;
+                    });
+
+                }
+            }
+        });
+
+        app.component('ExportDownload', ExportDownload);
+        app.component('PreviewCard', PreviewCard);
+        app.component('ExportCard', ExportCard);
+        app.component('BulletinCard', BulletinCard);
+        app.component('ActorProfiles', ActorProfiles);
+        app.component('ActorCard', ActorCard);
+        app.component('ReadMore', ReadMore);
+        app.component('IncidentCard', IncidentCard);
+        app.component('BulletinResult', BulletinResult);
+        app.component('ActorResult', ActorResult);
+        app.component('IncidentResult', IncidentResult);
+        app.component('UniField', UniField);
+        app.component('MissingPersonCard', MissingPersonCard);
+        app.component('RelatedIncidentsCard', RelatedIncidentsCard);
+        app.component('RelatedActorsCard', RelatedActorsCard);
+        app.component('RelatedBulletinsCard', RelatedBulletinsCard);
+        app.component('MediaCard', MediaCard);
+        app.component('MediaThumbnail', MediaThumbnail);
+        app.component('MediaGrid', MediaGrid);
+        app.component('EventCard', EventCard);
+        app.component('GlobalMap', GlobalMap);
+        app.component('EntityFlowMap', EntityFlowMap);
+        app.component('MobilityMap', MobilityMap);
+        app.component('InlineMediaRenderer', InlineMediaRenderer);
+        app.component('ImageViewer', ImageViewer);
+        app.component('PdfViewer', PdfViewer);
+        app.component('NativePdfViewer', NativePdfViewer);
+        app.component('DocxViewer', DocxViewer);
+
+        app.use(router).use(vuetify);
+        router.isReady().then(() => {
+            app.mount('#app');
+            window.app = app;
+        });
+    </script>
+{% endblock %}

@@ -1,0 +1,73 @@
+services:
+  postgres:
+    container_name: postgres
+    image: 'postgis/postgis:16-3.5@sha256:a780ff6331b384e4c6d1033d5c42f4fe1270721b3e19260448241fa1b64a7637'
+    # postgis/postgis publishes amd64 only; runs emulated on ARM hosts
+    platform: linux/amd64
+    user: postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=bayanat_test
+    volumes:
+      - 'postgres_test_data:/var/lib/postgresql/data:rw'
+    expose:
+      - '5432'
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /var/run/postgresql
+    healthcheck:
+      test: "pg_isready -d bayanat_test -U ${POSTGRES_USER}"
+      interval: 3s
+      retries: 10
+
+  redis:
+    container_name: redis
+    image: 'redis:7.4-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99'
+    user: redis
+    expose:
+      - '6379'
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    # password is written to a config file in-container, never passed via argv
+    command: sh -c 'echo "requirepass $$REDIS_PASSWORD" > /tmp/redis.conf && exec redis-server /tmp/redis.conf'
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    volumes:
+      - 'redis_test_data:/data:rw'
+    healthcheck:
+      test: [ "CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG" ]
+      interval: 3s
+      retries: 10
+
+  bayanat:
+    container_name: bayanat
+    build:
+      context: .
+      dockerfile: ./flask/Dockerfile.test
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:5000:5000'
+    volumes:
+      - '${PWD}/reload.ini:/app/reload.ini:rw'
+      - '${PWD}/${ENV_FILE:-.env.test}:/app/.env:ro'
+      - 'bayanat_test_media:/app/enferno/media:rw'
+      - 'bayanat_test_imports:/app/tests/imports:rw'
+      - 'bayanat_test_logs:/app/logs:rw'
+    command: [ "uv", "run", "pytest" ]
+
+volumes:
+  redis_test_data:
+  postgres_test_data:
+  bayanat_test_media:
+  bayanat_test_imports:
+  bayanat_test_logs:

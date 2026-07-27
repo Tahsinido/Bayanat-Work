@@ -1,0 +1,120 @@
+<v-navigation-drawer v-model="drawer" app rail width="auto" expand-on-hover class="h-screen">
+    <v-list dense class="scrollable-nav d-flex flex-column" height="100%">
+        <v-list-item prepend-icon="mdi-file-document-multiple" title="{{ _('Bulletins') }}" href="/admin/bulletins/"
+                     key="bulletins"></v-list-item>
+
+        <v-list-item prepend-icon="mdi-account-multiple" title="{{ _('Actors') }}" href="/admin/actors/"
+                     key="actors"></v-list-item>
+
+        <v-list-item prepend-icon="mdi-hazard-lights" title="{{ _('Incidents') }}" href="/admin/incidents/"
+                     key="incidents"></v-list-item>
+
+        {% if current_user.has_role('Admin') or current_user.has_role('Mod') or current_user.has_role('DA') %}
+            <v-list-item prepend-icon="mdi-clipboard-text-search" title="{{ _('Field Data') }}"
+                         href="/admin/field-data/" key="field-data"></v-list-item>
+        {% endif %}
+
+        {% if current_user.has_role("Admin") or current_user.can_access_media %}
+            <v-list-item prepend-icon="mdi-image-multiple" title="{{ _('Media Dashboard') }}" href="/admin/media/" key="media"></v-list-item>
+        {% endif %}
+
+        {% if current_user.has_role('Admin') or current_user.has_role('Mod') or current_user.has_role('DA') %}
+            <!-- Primary Data (Locations) -->
+            <v-list-item prepend-icon="mdi-folder-marker" title="{{ _('Locations') }}" href="/admin/locations/"
+                         key="locations"></v-list-item>
+        {% endif %}
+
+        {% if current_user.has_role('Admin') or current_user.has_role('Mod') %}
+            <v-list-item prepend-icon="mdi-google-circles-extended" title="{{ _('Sources') }}" href="/admin/sources/"
+                         key="sources"></v-list-item>
+
+            <v-list-item prepend-icon="mdi-label" title="{{ _('Labels') }}" href="/admin/labels/"
+                         key="labels"></v-list-item>
+
+            <v-list-item prepend-icon="mdi-calendar-range" title="{{ _('Event Types') }}" href="/admin/eventtypes/"
+                         key="eventtypes"></v-list-item>
+        {% endif %}
+
+        {% if current_user.has_role("Admin") %}
+            <!-- Secondary Data (Location Configurations) -->
+            
+
+            <v-list-group>
+                <template v-slot:activator="{props}">
+                    <v-list-item v-bind="props" prepend-icon="mdi-database-import"
+                                 title="{{ _('Data Import') }}"></v-list-item>
+                </template>
+
+                {% if config.ETL_TOOL %}
+                    <v-list-item class="grey lighten-3" prepend-icon="mdi-multimedia" title="{{ _('Media Import') }}"
+                                 href="/import/media/" key="media-import"></v-list-item>
+                {% endif %}
+
+                {% if config.SHEET_IMPORT %}
+                    <v-list-item class="grey lighten-3" prepend-icon="mdi-google-spreadsheet"
+                                 title="{{ _('Sheets Import') }}" href="/import/sheets/"
+                                 key="sheet-import"></v-list-item>
+                {% endif %}
+
+                <v-list-item class="grey lighten-3" prepend-icon="mdi-format-list-bulleted"
+                             title="{{ _('Import Log') }}" href="/import/log/" key="import"></v-list-item>
+            </v-list-group>
+        {% endif %}
+
+        {% if deduplication %}
+            {% if current_user.has_role('Admin') or current_user.has_role('Mod') %}
+                <v-list-item prepend-icon="mdi-link-variant-plus" title="{{ _('Deduplication') }}"
+                             href="/deduplication/dashboard/" key="deduplication"></v-list-item>
+            {% endif %}
+        {% endif %}
+
+        {% if config.EXPORT_TOOL %}
+            {% if current_user.has_role('Admin') or current_user.can_export %}
+                <v-list-item prepend-icon="mdi-file-export" title="{{ _('Exports') }}" href="/export/dashboard/"
+                             key="export"></v-list-item>
+            {% endif %}
+        {% endif %}
+
+        {% if current_user.has_role("Admin") %}
+
+            <v-list-item prepend-icon="mdi-pulse" title="{{ _('Activity') }}" href="/admin/activity/"
+                            key="activity"></v-list-item>
+
+            <v-list-group>
+                <template v-slot:activator="{props}">
+                    <v-list-item v-bind="props" prepend-icon="mdi-account-group"
+                                title="{{ _('Users & Groups') }}"></v-list-item>
+                </template>
+
+                <!-- Users Management -->
+                <v-list-item class="grey lighten-3" prepend-icon="mdi-shield-account" title="{{ _('Users') }}"
+                            href="/admin/users/" key="users"></v-list-item>
+
+                <!-- Groups Management -->
+                <v-list-item class="grey lighten-3" prepend-icon="mdi-shield-lock" title="{{ _('Groups') }}"
+                            href="/admin/roles/" key="roles"></v-list-item>
+            </v-list-group>
+
+            <v-list-group>
+                <template v-slot:activator="{props}">
+                    <v-list-item v-bind="props" prepend-icon="mdi-database-edit"
+                                title="{{ _('Customize Database') }}"></v-list-item>
+                </template>
+                
+                <v-list-item prepend-icon="mdi-file-document-multiple" title="{{ _('Bulletin Form Builder') }}" href="/admin/bulletin-fields/"
+                            key="bulletinfields"></v-list-item>
+                <v-list-item prepend-icon="mdi-account-multiple" title="{{ _('Actor Form Builder') }}" href="/admin/actor-fields/"
+                            key="actorfields"></v-list-item>
+                <v-list-item prepend-icon="mdi-hazard-lights" title="{{ _('Incident Form Builder') }}" href="/admin/incident-fields/"
+                            key="incidentfields"></v-list-item>
+
+                <v-list-item prepend-icon="mdi-form-select" title="{{ _('Component Data') }}"
+                         href="/admin/component-data/" key="comp-data"></v-list-item>
+            </v-list-group>
+
+            <v-list-item prepend-icon="mdi-cog" title="{{ _('Organization System Settings') }}" href="/admin/system-administration/" key="sysadmin"></v-list-item>
+            <v-list-item prepend-icon="mdi-clipboard-text" title="{{ _('System Logs') }}" href="/admin/logs/" key="syslogs"></v-list-item>
+        {% endif %}
+
+    </v-list>
+</v-navigation-drawer>

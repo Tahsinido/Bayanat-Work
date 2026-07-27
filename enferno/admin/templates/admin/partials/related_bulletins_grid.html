@@ -1,0 +1,35 @@
+<!--  Grid of Bulletins Items -->
+
+<div class="wrapper overflow-hidden">
+    <div class="d-flex overflow-auto">
+
+        <v-sheet min-width="390" v-for="(item,index) in editedItem.bulletin_relations" :key="index">
+
+            <bulletin-result :bulletin="item.bulletin"
+                             :show-hide="false">
+                <!--  attach relationship form -->
+                <template #header>
+                    <relation-editor-card
+                            variant="text"
+                            v-model:relation="editedItem.bulletin_relations[index]"
+                            :multi-relation="bulletinRelationMultiple"
+                            :relation-types="bulletinRelationTypes"
+                    ></relation-editor-card>
+                    <v-divider></v-divider>
+                </template>
+
+                <template #actions>
+                    <v-btn
+                            @click="removeBulletin($event,index)"
+                            size="small"
+                            icon="mdi-delete-sweep"
+                            color="red">
+                    </v-btn>
+                </template>
+
+
+            </bulletin-result>
+
+        </v-sheet>
+    </div>
+</div>

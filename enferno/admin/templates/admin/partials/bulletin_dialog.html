@@ -1,0 +1,222 @@
+<short-actor-dialog
+    v-if="actorDialog"
+    ref="shortActorDialogRef"
+    v-model:open="actorDialog"
+    :rules="rules"
+    :status-items="statusItems"
+    :adv-features="advFeatures"
+    :event-params="{typ: 'for_actor'}"
+    :prefill-data="actorFormPrefillData"
+    :allowed-roles="allowedRoles"
+    :parent-item="editedItem"
+    :can-restrict-view="{% if config.AC_USERS_CAN_RESTRICT_NEW or current_user.has_role("Admin") %}true{% else %}false{% endif %}"
+    @create-actor="relateCreatedActor"
+>
+</short-actor-dialog>
+
+<v-dialog :retain-focus="false" no-click-animation persistent v-model="dialog" fullscreen>
+    <v-form @submit.prevent="save" ref="form" v-model="valid">
+        <v-card v-if="dialog" class="overflow-hidden card-edit">
+            <v-toolbar
+                color="primary"
+                class="card-header"
+            >
+                <v-toolbar-title>${formTitle} <span class="gv--text" v-if="editedItem.id"> ${editedItem.id}</span>
+
+                    <v-tooltip v-if="editedItem.originid" location="bottom">
+                        <template v-slot:activator="{ props }">
+                            <v-chip 
+                                v-bind="props"
+                                prepend-icon="mdi-identifier" 
+                                :href="editedItem.source_link" 
+                                target="_blank" 
+                                pill 
+                                label
+                                class="white--text ml-1">
+                                ${editedItem.originid}
+                                <v-icon v-if="editedItem.source_link" size="x-small" class="white--text ml-1">mdi-open-in-new</v-icon>
+                            </v-chip>
+                        </template>
+                        {{ _('Origin ID') }}
+                    </v-tooltip>
+
+                    <v-tooltip v-else-if="editedItem.source_link && editedItem.source_link != 'NA'" location="bottom">
+                        <template v-slot:activator="{ props }">
+                            <v-chip 
+                                v-bind="props"
+                                prepend-icon="mdi-link-variant"
+                                :href="editedItem.source_link" 
+                                target="_blank" 
+                                pill 
+                                label
+                                class="white--text ml-1">
+                                ${editedItem.source_link}
+                                <v-icon size="x-small" class="white--text ml-1">mdi-open-in-new</v-icon>
+                            </v-chip>
+                        </template>
+                        {{ _('Source Link') }}
+                    </v-tooltip>
+
+                </v-toolbar-title>
+
+                <template #append>
+                    <v-btn @click="validateFormAndSave" :disabled="saving" :loading="saving" variant="elevated" class="mx-2">
+                        {{ _('Save Bulletin') }}
+                    </v-btn>
+                    <v-btn icon="mdi-close" @click="confirmClose"></v-btn>
+                </template>
+
+
+            </v-toolbar
+            >
+
+            <v-card-text class="pa-0" style="height: calc(100vh - 64px);">
+                    <split-view ref="bulletinDialogSplitViewRef" @left-width-changed="leftDialogProps['content-props'].style.width = $event" @right-width-changed="rightDialogProps['content-props'].style.width = $event">
+                        <template #left>
+                            <div class="mx-4 mb-4 mt-8">
+                                {% include 'admin/partials/media_dialog.html' %}
+                            </div>
+                        </template>
+                        <template #right>
+                            <div v-if="movableDynamicFields({ entityType: 'bulletin' }).length" class="form-grid mt-4">
+                                <template v-for="(field, index) in movableDynamicFields({ entityType: 'bulletin' })" :key="field.id">
+                                    <div v-if="isFieldActive(field, 'title')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        <dual-field v-model:original="editedItem.title" v-model:translation="editedItem.title_ar"
+                                            label-original="{{ _('Original Title') }}" label-translation="{{ _('Original Title (Ar)') }}" :rules="[
+                                                validationRules.atLeastOneRequired(editedItem.title, '{{ _('Original Title is required.') }}'),
+                                                validationRules.maxLength(255),
+                                            ]"
+                                            v-bind="serverErrorPropsForDualField(serverErrors, 'item.title', 'item.title_ar')"
+                                        ></dual-field>
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'sjac_title')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        <dual-field v-model:original="editedItem.sjac_title" v-model:translation="editedItem.sjac_title_ar"
+                                            label-original="{{ _('Title') }}" label-translation="{{ _('Title (Ar)') }}"
+                                            :rules="[validationRules.maxLength(255)]"
+                                            v-bind="serverErrorPropsForDualField(serverErrors, 'item.sjac_title', 'item.sjac_title_ar')"
+                                        ></dual-field>
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'tags')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        <v-combobox chips multiple v-model="editedItem.tags" label="{{ _('Tags') }}"></v-combobox>
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'sources')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        <search-field v-model="editedItem.sources" api="/admin/api/sources/" item-title="title" item-value="id"
+                                            :multiple="true" label="{{ _('Sources') }}"></search-field>
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'description')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        <div class="text-subtitle-2 mb-2">{{ _('Description') }}</div>
+                                        <tinymce-editor :init="tinyConfig" :key="descKey" v-model="editedItem.description"></tinymce-editor>
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'public_description')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        <div class="text-subtitle-2 mb-2 mt-4">{{ _('Public Description') }}</div>
+                                        <tinymce-editor :init="tinyConfig" :key="descKey + '-public-description'" v-model="editedItem.public_description"></tinymce-editor>
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'labels')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        <label-search-field v-model="editedItem.labels" :query-params="{ typ: 'for_bulletin', mode: 2 }" :multiple="true" :show-copy-icon="advFeatures" :retain-search="true" label="{{ _('Labels') }}"></label-search-field>
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'ver_labels')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        <label-search-field v-model="editedItem.verLabels"
+                                            :query-params="{ fltr: 'verified', typ: 'for_bulletin', mode: 2 }" :multiple="true"
+                                            :show-copy-icon="advFeatures" :retain-search="true" label="{{ _('Verified Labels') }}"></label-search-field>
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'locations')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        <location-search-field v-model="editedItem.locations" api="/admin/api/locations/" item-title="full_string"
+                                            item-value="id" :multiple="true" :show-copy-icon="advFeatures" label="{{ _('Locations') }}"></location-search-field>
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'events_section')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        <events-section :edited-item="editedItem" :dialog-props="rightContainedDialogProps" :show-copy-icon="advFeatures"
+                                        :event-params="eventParams"></events-section>
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'geo_locations')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        <geo-locations @locations-updated="geoLocationsUpdated" :others="editedItem.geoLocations"
+                                            v-model="editedItem.geoLocations" :dialog-props="rightContainedDialogProps"></geo-locations>
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'global_map')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        <global-map  ref="globalmap" :model-value="compLocations"></global-map>
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'publish_date')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        <pop-date-time-field time-label="{{ _('Time') }}" label="{{ _('Publish Date') }}"
+                                            v-model="editedItem.publish_date"></pop-date-time-field>
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'documentation_date')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        <pop-date-time-field time-label="{{ _('Time') }}" label="{{ _('Documentation Date') }}"
+                                            v-model="editedItem.documentation_date"></pop-date-time-field>
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'related_bulletins')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        {% include 'admin/partials/edit_related_bulletins.html' %}
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'related_actors')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        {% include 'admin/partials/edit_related_actors.html' %}
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'related_incidents')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        {% include 'admin/partials/edit_related_incidents.html' %}
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'source_link')" :class="[fieldClass(field), 'px-3 py-2']">
+                                        <v-sheet class="d-flex align-center">
+                                            <v-text-field class="mx-2" :disabled="source_disabled" v-model="editedItem.source_link"
+                                                label="{{ _('Source Link') }}" :rules="[
+                                                validationRules.required('{{ _('Source link is required unless unavailable.')}}'),
+                                                    validationRules.maxLength(255)
+                                                ]"
+                                                v-bind="serverErrorPropsForField(serverErrors, 'item.source_link')"
+                                            ></v-text-field>
+                                        
+                                            <v-checkbox class="mx-2" label="{{ _('Not Available') }}" v-model="source_alt">
+                                            </v-checkbox>
+                                        
+                                            <v-switch color="primary" class="mx-2" label="{{ _('Private') }}" v-model="editedItem.source_link_type">
+                                            </v-switch>
+                                        </v-sheet>
+                                    </div>
+                                    <field-renderer v-else-if="isFieldActive(field) && !field.core" v-model="editedItem[field.name]" :field="field" :class="[fieldClass(field), 'px-3 py-2']"></field-renderer>
+                                </template>
+                            </div>
+                            <div v-if="fixedDynamicFields({ entityType: 'bulletin' }).length" class="form-grid mt-4">
+                                <template v-for="(field, index) in fixedDynamicFields({ entityType: 'bulletin' })" :key="field.id">
+                                    <div v-if="isFieldActive(field, 'comments')" :class="fieldClass(field)">
+                                        <v-textarea required class="h-100" :rules="[validationRules.required()]" outlined v-model="editedItem.comments"
+                                            label="{{ _('Comments') }}" v-bind="serverErrorPropsForField(serverErrors, 'item.comments')">
+                                        </v-textarea>
+                                    </div>
+                                    <div v-else-if="isFieldActive(field, 'status')" :class="fieldClass(field)">
+                                        <v-select :disabled="statusDisabled" item-title="tr" item-value="en" :items="statusItems" class="mx-2"
+                                            v-model="editedItem.status" label="{{ _('Status') }}"></v-select>
+                                    </div>
+                                </template>
+                                {% if config.AC_USERS_CAN_RESTRICT_NEW or current_user.has_role("Admin") %}
+                                <div class="grid-col-span-1 px-3 py-2" v-if="!editedItem.id">
+                                    <v-select :color="editedItem.roles?.length ? 'blue darken-1' : 'error'"
+                                        :prepend-icon="editedItem.roles?.length ? 'mdi-lock' : 'mdi-lock-open'" chips :disabled="unrestricted"
+                                        item-title="name" return-object :items="allowedRoles" multiple v-model="editedItem.roles"
+                                        label="{{ _('Restrict Bulletin to Access Group(s)') }}" :rules="
+                                                                                                                    !unrestricted ? [validationRules.required('{{ _('Access Group(s) are required unless unrestricted.')}}')] : []
+                                                                                                                " clearable></v-select>
+                                    <v-checkbox color="error" @change="unrestricted? editedItem.roles = [] : null" class="mx-2"
+                                        label="{{ _('No Access Groups') }}" v-model="unrestricted">
+                                    </v-checkbox>
+                                </div>
+                                {% endif %}
+                            </div>
+
+
+                            <v-row class="w-100 ma-0" v-if="editedItem.review">
+                                <v-col cols="12" md="12">
+                        
+                                    <v-card outlined color="gray " elevation="0">
+                                        <v-card-title class="subtitle-2 black--text">{{ _('Review') }}</v-card-title>
+                                        <v-card-text>
+                                            <read-more>
+                                                <p class="pa-1 my-2 grey--text text--darken-2" v-html="editedItem.review"></p>
+                                            </read-more>
+                                        </v-card-text>
+                        
+                                    </v-card>
+                        
+                                </v-col>
+                            </v-row>
+                        </template>
+                    </split-view>
+            </v-card-text>
+        </v-card>
+    </v-form>
+</v-dialog>

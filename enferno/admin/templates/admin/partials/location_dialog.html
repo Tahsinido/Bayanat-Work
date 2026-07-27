@@ -1,0 +1,163 @@
+<v-dialog :retain-focus="false" no-click-animation persistent v-if="dialog" v-model="dialog" fullscreen>
+    <v-form @submit.prevent="save"  ref="form" v-model="valid">
+        <v-card v-if="dialog" class="overflow-hidden card-edit">
+            <v-toolbar
+                color="primary"
+                class="card-header">
+            <v-toolbar-title>${ formTitle }
+                <span class="gv--text" v-if="editedItem.id"> ${editedItem.id}</span>
+            </v-toolbar-title>
+                <v-spacer></v-spacer>
+                <v-btn 
+                    type="button" 
+                    @click="validateForm"
+                    variant="elevated"
+                    class="mx-2"
+                    >
+                    {{ _('Save Location') }}
+                    </v-btn>
+                <v-btn
+                    icon="mdi-close"
+                    @click="confirmClose">
+                </v-btn>
+            </v-toolbar>
+
+            <v-sheet 
+                id="card-content"
+                max-height="100vh"
+                class="overflow-y-auto pt-14">
+                <v-container>
+                    <v-row>
+                        <v-col cols="12" md="6">
+                            <dual-field v-model:original="editedItem.title"
+                                        v-model:translation="editedItem.title_ar"
+                                        label-original="{{ _('Title') }}"
+                                        label-translation="{{ _('Title (Ar)') }}"
+                                        :rules="[
+                                            validationRules.required('{{_('Title or Title (Ar) is required')}}'),
+                                            validationRules.maxLength(255),
+                                        ]"
+                                        v-bind="$root.serverErrorPropsForDualField($root.serverErrors, 'item.title', 'item.title_ar')"
+                            ></dual-field>
+                        </v-col>
+
+                        <v-col cols="12" md="6">
+                            <v-text-field
+                                    variant="solo"
+                                disabled
+                                v-model="editedItem.full_string"
+                                label="{{ _('Full Location') }}">
+                            </v-text-field>
+                        </v-col>
+                    </v-row>
+
+                    <v-row>
+                        <v-col cols="12" md="5">
+                                <search-field
+                                    v-model="editedItem.location_type"
+                                    api="/admin/api/location-types/"
+                                    item-title="title"
+                                    item-value="id"
+                                    :rules="[validationRules.required()]"
+                                    :multiple="false"
+                                    label="{{ _('Location Type') }}">
+                                </search-field>
+
+
+                        </v-col>
+                        
+                        <v-col cols="12" md="4">
+
+                                <search-field
+                                    api="/admin/api/location-admin-levels/"
+                                    item-title="title"
+                                    item-value="id"
+                                    :disabled="editedItem.location_type?.title!=='Administrative Location'"
+                                    v-model="editedItem.admin_level"
+                                    @update:model-value="restrictSearch"
+                                    :multiple="false"
+                                    :rules="editedItem.location_type?.title === 'Administrative Location' ? [validationRules.required()] : []"
+                                    label="{{ _('Admin Level') }}">
+                                </search-field>
+
+                        </v-col>
+
+                        <v-col cols="12" md="3">
+                            <search-field
+                                clearable
+                                api="/admin/api/countries/"
+
+                                item-title="title"
+                                item-value="title"
+
+                                v-model="editedItem.country"
+                                label="{{ _('Country') }}">
+                            </search-field>
+                        </v-col>
+                    </v-row>
+
+                    <v-row>
+                        <v-col cols="12" md="8">
+                            <location-search-field
+                                :disabled="editedItem.admin_level?.code == 1"
+                                v-model="editedItem.parent"
+                                api="/admin/api/locations/"
+                                :query-params="locQueryParams"
+                                item-title="full_string"
+                                item-value="id"
+                                :return-object="true"
+                                :multiple="false"
+                                label="{{ _('Parent Location') }}"
+                                >
+                            </location-search-field>
+                        </v-col>
+
+                        <v-col cols="12" md="4">
+                            <v-text-field
+                                    variant="solo"
+                                v-model="editedItem.postal_code"
+                                label="{{ _('Postal Code') }}"
+                                v-bind="$root.serverErrorPropsForField($root.serverErrors, 'item.postal_code')"
+                            >
+                            </v-text-field>
+                        </v-col>
+                        
+                    </v-row>
+                    
+                    <v-row>
+                        <v-col cols="12" md="12">
+                            <geo-map
+                                    :edit-mode="true"
+                                class="flex-grow-1"
+                                v-model="editedItem.latlng"
+                                :map-height="300">
+                            </geo-map>
+                        </v-col>        
+                    </v-row>
+
+                    <v-row>
+                        <v-col cols="12" md="12">
+                            <tinymce-editor
+                                :key="locationKey"
+                                :init="tinyConfig"
+                                v-model="editedItem.description">
+                            </tinymce-editor>
+                        </v-col>
+                    </v-row>
+
+                    <v-row>
+                        <v-col cols="12" md="12">
+                            <v-combobox
+                                chips
+                                multiple
+                                v-model="editedItem.tags"
+                                label="{{ _('Tags') }}">
+                            </v-combobox>
+                        </v-col>
+                    </v-row>
+
+                </v-container>
+            </v-sheet>
+        </v-card>
+    </v-form>
+</v-dialog>

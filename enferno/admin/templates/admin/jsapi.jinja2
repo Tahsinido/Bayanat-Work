@@ -1,0 +1,852 @@
+var geoMapDefaultCenter = {lat: {{ config.get('GEO_MAP_DEFAULT_CENTER_LAT') }}, lng: {{ config.GEO_MAP_DEFAULT_CENTER_LNG }} }
+
+var itemsPerPageOptions =  JSON.parse(`{{ config.ITEMS_PER_PAGE_OPTIONS }}`);
+
+var VIDEO_RATES = JSON.parse(`{{ config.VIDEO_RATES }}`);
+
+var mediaUploadMaxFileSize = JSON.parse(`{{ config.MEDIA_UPLOAD_MAX_FILE_SIZE }}`);
+
+var languages = {{ config.LANGUAGES }};
+
+var translations = {
+
+bulletin_: "{{ _('Bulletin') }}",
+actor_: "{{ _('Actor') }}",
+incident_: "{{ _('Incident') }}",
+
+theme_ : "{{ _('Theme') }}",
+light_ : "{{ _('Light') }}",
+dark_ : "{{ _('Dark') }}",
+mySecurity_ : "{{ _('My Security') }}",
+changePassword_ : "{{ _('Change Password') }}",
+tfaAuthentication_ : "{{ _('2FA Authentication') }}",
+recoveryCodes_ : "{{ _('Recovery Codes') }}",
+securityKeys_ : "{{ _('Security Keys') }}",
+userGuides_ : "{{ _('User Guides') }}",
+support_ : "{{ _('Support') }}",
+reportABug_ : "{{ _('Report a Bug') }}",
+logout_ : "{{ _('Logout') }}",
+accountSecurity_ : "{{ _('Account Security') }}",
+filters_ : "{{ _('Filters') }}",
+violations_ : "{{ _('Violations') }}",
+personalInformation_ : "{{ _('Personal Information') }}",
+NAMEINFORMATION_ : "{{ _('NAME INFORMATION') }}",
+DEMOGRAPHICS_ : "{{ _('DEMOGRAPHICS') }}",
+PROFESSIONALANDFAMILY_ : "{{ _('PROFESSIONAL & FAMILY') }}",
+CULTURALINFORMATION_ : "{{ _('CULTURAL INFORMATION') }}",
+ORIGINLOCATIONS_ : "{{ _('ORIGIN LOCATIONS') }}",
+searchLogic_ : "{{ _('Search Logic') }}",
+howToCombineFilters_ : "{{ _('How to combine filters') }}",
+textSearch_ : "{{ _('Text Search') }}",
+TAGS_ : "{{ _('TAGS') }}",
+dates_ : "{{ _('Dates') }}",
+classification_ : "{{ _('Classification') }}",
+LABELS_ : "{{ _('LABELS') }}",
+VERIFIEDLABELS_ : "{{ _('VERIFIED LABELS') }}",
+SOURCES_ : "{{ _('SOURCES') }}",
+workflowAndAccess_ : "{{ _('Workflow & Access') }}",
+customFields_ : "{{ _('Custom Fields') }}",
+accessAndReview_ : "{{ _('Access & Review') }}",
+separateWordsWithSpaceUseQuotesForExactMatch_ : "{{ _('Separate words with space, use quotes for exact match') }}",
+activeFiltersCount_: (count) => "{{ _('{count} active filter(s)') }}".replace("{count}", count),
+googleVisionApiHasNotBeenConfigured_ : "{{ _('Google Vision API is not configured. Please contact your administrator.') }}",
+apiNotConfigured_ : "{{ _('API is not configured.') }}",
+transcriptionReview_: "{{ _('Transcription Review') }}",
+typeWhatYouSeeInMediaHere_: "{{ _('Type what you see in the media here...') }}",
+saveTranscription_: "{{ _('Save transcription') }}",
+acceptTranscription_: "{{ _('Accept transcription') }}",
+runOCR_: "{{ _('Run OCR') }}",
+confidenceLevel_: "{{ _('Confidence Level') }}",
+unsupported_: "{{ _('Unsupported') }}",
+translationCompleted_: "{{ _('Translation completed') }}",
+english_: "{{ _('English') }}",
+spanish_: "{{ _('Spanish') }}",
+dutch_: "{{ _('Dutch') }}",
+german_: "{{ _('German') }}",
+french_: "{{ _('French') }}",
+pending_: "{{ _('Pending') }}",
+failed_: "{{ _('Failed') }}",
+cannotRead_: "{{ _('Cannot Read') }}",
+processed_: "{{ _('Processed') }}",
+processing_: "{{ _('Processing') }}",
+pleaseWaitWhileWeProcessThisMedia_: "{{ _('Please wait while we process this media') }}",
+manuallyTranscribed_: "{{ _('Manually transcribed') }}",
+ocrProcessingFailedForThisMedia_: "{{ _('OCR processing failed for this media') }}",
+clickRetryOCR_: "{{ _('Click retry to attempt OCR processing again') }}",
+ocrProcessingFailed_: "{{ _('OCR Processing Failed') }}",
+retryOCR_: "{{ _('Retry OCR') }}",
+ocrStatus_: "{{ _('OCR Status') }}",
+thisMediaHasBeenMarkedAsUnreadableByAReviewer_: "{{ _('This media has been marked as unreadable by a reviewer') }}",
+thisMediaWasManuallyTranscribedByAReviewer_: "{{ _('This media was manually transcribed by a reviewer') }}",
+thisMediaHasBeenReviewedAndAccepted_: "{{ _('This media has been reviewed and accepted') }}",
+extractedText_: "{{ _('Extracted text') }}",
+errorProcessingOCR_: "{{ _('Error processing OCR') }}",
+sourceLanguage_: "{{ _('Source Language') }}",
+translate_: "{{ _('Translate') }}",
+orientationSaved_: "{{ _('Orientation saved') }}",
+saveOrientation_: "{{ _('Save Orientation') }}",
+wordCount_: "{{ _('Word Count') }}",
+thisDocumentHasOnlyXWords_: "{{ _('This document has only {count} words.') }}",
+reviewRecommended_: "{{ _('Review Recommended') }}",
+considerCheckingForHandwrittenContent_: "{{ _('Consider checking if any handwritten content was missed.') }}",
+transcriptionIsRequired_: "{{ _('Transcription is required') }}",
+ocrProcessedSuccessfully_: "{{ _('OCR processed successfully') }}",
+ocrNotRunYet_: "{{ _('OCR has not been run on this media yet') }}",
+clickRunOCR_: "{{ _('Click \'Run OCR\' below to extract text from this image') }}",
+noExtractionDataFoundForThisMedia_: "{{ _('No extraction data found for this media.') }}",
+mediaManuallyTranscribed_: "{{ _('Media manually transcribed') }}",
+mediaMarkedAsAccepted_: "{{ _('Media marked as accepted') }}",
+mediaMarkedAsCannotRead_: "{{ _('Media marked as cannot read') }}",
+cantRead_: "{{ _('Can\'t Read') }}",
+high_: "{{ _('High') }}",
+medium_: "{{ _('Medium') }}",
+low_: "{{ _('Low') }}",
+newBulletin_: "{{ _('New Bulletin') }}",
+editBulletin_: "{{ _('Edit Bulletin') }}",
+newActor_: "{{ _('New Actor') }}",
+editActor_: "{{ _('Edit Actor') }}",
+newItem_: "{{ _('New Item') }}",
+editItem_: "{{ _('Edit Item') }}",
+usernameInvalid_: "{{ _('Invalid username: only letters and numbers are allowed') }}",
+usernameAlreadyTaken_: "{{ _('Username already taken') }}",
+emailInvalid_: "{{ _('Invalid email address') }}",
+invalidDate_: "{{ _('Invalid date') }}",
+fromDateMustBeBeforeTheToDate_: "{{ _('From date must be before To date') }}",
+toDateMustBeAfterTheFromDate_: "{{ _('To date must be after From date') }}",
+mustBeAValidUrlOrNa_: "{{ _('Must be a valid URL or \'NA\'') }}",
+fieldsDoNotMatch_: "{{ _('Fields do not match') }}",
+passwordTooWeak_: "{{ _('Password is too weak') }}",
+selectFieldType_: "{{ _('Select Field Type') }}",
+shortText_: "{{ _('Short Text') }}",
+longText_: "{{ _('Long Text') }}",
+number_: "{{ _('Number') }}",
+dropdown_: "{{ _('Dropdown') }}",
+multiSelect_: "{{ _('Multi-Select') }}",
+dateAndTime_: "{{ _('Date and Time') }}",
+markFieldAsRequired_: "{{ _('Make the field required') }}",
+markFieldAsSearchable_: "{{ _('Make the field searchable') }}",
+showField_: "{{ _('Show Field') }}",
+hideField_: "{{ _('Hide Field') }}",
+showOption_: "{{ _('Show Option') }}",
+hideOption_: "{{ _('Hide Option') }}",
+deleteField_: "{{ _('Delete Field') }}",
+deletionRestricted_: "{{ _('Deletion Restricted') }}",
+maxLength_: "{{ _('Max Length') }}",
+helpText_: "{{ _('Help Text') }}",
+fieldProperties_: "{{ _('Field Properties') }}",
+addAnotherOption_: "{{ _('Add another option') }}",
+oneSelectionOnly_: "{{ _('One selection only') }}",
+fieldOptions_: "{{ _('Field Options') }}",
+default_: "{{ _('DEFAULT') }}",
+custom_: "{{ _('CUSTOM') }}",
+full_: "{{ _('Full') }}",
+half_: "{{ _('Half') }}",
+newField_: "{{ _('New Field') }}",
+fieldLabel_: "{{ _('Field Title') }}",
+optionN_: (num) => "{{ _('Option {num}') }}".replace("{num}", num),
+fieldN_: (num) => "{{ _('Field {num}') }}".replace("{num}", num),
+width_: "{{ _('Width') }}",
+noUiComponentMappedForThisField_: "{{ _('No UI component mapped for this field') }}",
+showOrHideEventTypes_: "{{ _('Show or Hide Event Types') }}",
+added_: "{{ _('Added') }}",
+modified_: "{{ _('Modified') }}",
+deleted_: "{{ _('Deleted') }}",
+copiedToClipboard_: "{{ _('Copied to clipboard') }}",
+copyCoordinates_: "{{ _('Copy coordinates') }}",
+failedToCopyCoordinates_: "{{ _('Failed to copy coordinates') }}",
+upTo255Characters_: "{{ _('Up to 255 characters') }}",
+unlimitedTextLength_: "{{ _('Unlimited text length') }}",
+wholeNumbersOnly_: "{{ _('Whole numbers only') }}",
+singleOrMultipleChoice_: "{{ _('Single or multiple choice') }}",
+dateWithOptionalTime_: "{{ _('Date with optional time') }}",
+deletingTheFieldWillRemoveItFromYourForm_: (field) => "{{ _('Deleting the field \'{field}\' will remove it from your form.') }}".replace("{field}", field),
+fieldHasBeenDeletedSuccessfully_: (field) => "{{ _('Field \'{field}\' has been deleted successfully.') }}".replace("{field}", field),
+googleOauth_: "{{ _('Google OAuth') }}",
+youreAboutToDiscardChanges_: "{{ _('You\'re about to discard changes') }}",
+discardingWillRemoveAllUnsavedEdits_: "{{ _('Discarding will remove all unsaved edits you\'ve made to this form.') }}",
+doYouWantToContinue_: "{{ _('Do you want to continue?') }}",
+discardChanges_: "{{ _('Discard Changes') }}",
+allUnsavedEditsHaveBeenDiscarded_: "{{ _('All unsaved edits in the form have been discarded.') }}",
+reviewAndConfirmChanges_: "{{ _('Review & Confirm Changes') }}",
+youreAboutToDeleteAField_: "{{ _('You\'re about to delete a field') }}",
+fieldsSavedSuccessfully_: "{{ _('Fields saved successfully') }}",
+cityListWithMore_: (names, num) => "{{ _('{names} and {num} more') }}".replace('{names}', names).replace('{num}', num),
+viewEditTranscription_: "{{ _('View/Edit Transcription') }}",
+transcribe_: "{{ _('Transcribe') }}",
+transcriptionAvailableAfterSaving_: "{{ _('Transcription available after saving') }}",
+
+cancel_ : "{{ _('Cancel') }}",
+titleOrTitleArRequired_ : "{{ _('Title or Title (Ar) is required') }}",
+review_ : "{{ _('Review') }}",
+locationOrDateRequired_: "{{ _('Location or Date is required') }}",
+titleOrTypeRequired_: "{{ _('Title or Event Type is required') }}",
+preview_ : "{{ _('Preview') }}",
+pleaseReviewFormForErrors_ : "{{ _('Please review the form for errors.') }}",
+accessGroupsRequired_ : "{{ _('Access Group(s) are required unless unrestricted.') }}",
+saveActor_: "{{ _('Save Actor') }}",
+title_: "{{ _('Title') }}",
+titleAr_: "{{ _('Title (AR)') }}",
+mediaCategory_: "{{ _('Media Category') }}",
+name_: "{{ _('Name') }}",
+nameAr_: "{{ _('Name (AR)') }}",
+tags_: "{{ _('Tags') }}",
+firstName_: "{{ _('First Name') }}",
+firstNameAr_: "{{ _('First Name (AR)') }}",
+middleName_: "{{ _('Middle Name') }}",
+middleNameAr_: "{{ _('Middle Name (AR)') }}",
+lastName_: "{{ _('Last Name') }}",
+lastNameAr_: "{{ _('Last Name (AR)') }}",
+sex_: "{{ _('Sex') }}",
+civilianNonCivilian_: "{{ _('Civilian/Non Civilian') }}",
+placeOfOrigin_: "{{ _('Place of Origin') }}",
+originId_: "{{ _('Origin ID') }}",
+sources_: "{{ _('Sources') }}",
+labels_: "{{ _('Labels') }}",
+estimatedTime_: "{{ _('Estimated Time') }}",
+from_: "{{ _('From') }}",
+to_: "{{ _('To') }}",
+comments_: "{{ _('Comments') }}",
+commentsAr_: "{{ _('Comments (Ar)') }}",
+status_: "{{ _('Status') }}",
+restrictToAccessGroups_: "{{ _('Restrict Actor to Access Group(s)') }}",
+noAccessAccessGroups_: "{{ _('No Access Access Groups') }}",
+profile_: "{{ _('Profile') }}",
+noItemsAvailable_: "{{ _('No items available') }}",
+noMoreItemsToLoad_: "{{ _('No more items to load') }}",
+
+mapVisualization_: "{{ _('Map Visualization') }}",
+startingGeneration_: "{{ _('Starting map generation...') }}",
+waitingForMapGeneration_: "{{ _('Waiting for map data...') }}",
+fetchingVisualizationData_: "{{ _('Loading map data...') }}",
+mapGenerationFailed_: "{{ _('Map generation failed') }}",
+preparingMap_: "{{ _('Preparing map...') }}",
+renderingMap_: "{{ _('Rendering map...') }}",
+flowDetails_: "{{ _('Flow Details') }}",
+origin_: "{{ _('Origin') }}",
+destination_: "{{ _('Destination') }}",
+count_: "{{ _('Count') }}",
+locationDetails_: "{{ _('Location Details') }}",
+totalIn_: "{{ _('Total In') }}",
+totalOut_: "{{ _('Total Out') }}",
+loadedLocationsFlowsAndActors_: ({total_locations, total_flows, total_actors}) => "{{ _('Loaded {total_locations} locations, {total_flows} flows, and {total_actors} actors') }}".replace("{total_locations}", total_locations).replace("{total_flows}", total_flows).replace("{total_actors}", total_actors),
+fileTypeNotSupported_: "{{ _('File Type Not Supported') }}",
+ocrProcessingIsOnlyAvailableForTheFollowingFileTypes_: (fileTypes) => "{{ _('OCR processing is only available for the following file types: {fileTypes}') }}".replace("{fileTypes}", fileTypes),
+
+showMore_: "{{ _('Show more') }}",
+showLess_: "{{ _('Show less') }}",
+addAsRelated_: "{{ _('Add as related') }}",
+hideFromResults_: "{{ _('Hide from results') }}",
+showSearch_ : "{{ _('Show search') }}",
+hideSearch_ : "{{ _('Hide search') }}",
+query_ : "{{ _('Query') }}",
+advSearch_ : "{{ _('Advanced Search') }}",
+noResults_: "{{ _('No (more) items found.') }}",
+hide_: "{{ _('Hide') }}",
+relate_: "{{ _('Relate') }}",
+contains_: "{{ _('Contains') }}",
+notContains_: "{{ _('Does not contain') }}",
+originId_: "{{ _('Origin ID') }}",
+searchTerms_: "{{ _('Search Terms') }}",
+excludeTerms_: "{{ _('Exclude Terms') }}",
+tags_: "{{ _('Tags') }}",
+inTags_: "{{ _('Include Tags') }}",
+inTagsAll_: "{{ _('Include Tags (All)') }}",
+exTags_: "{{ _('Exclude Tags') }}",
+exTagsAny_: "{{ _('Exclude Tags (Any)') }}",
+publishDate_: "{{ _('Publish Date') }}",
+documentationDate_: "{{ _('Documentation Date') }}",
+createdDate_: "{{ _('Creation Date') }}",
+updatedDate_: "{{ _('Last Modified Date') }}",
+eventDate_: "{{ _('Event Date') }}",
+event_: "{{ _('Event') }}",
+timingForThisEventIsEstimated_: "{{ _('Timing for this event is estimated') }}",
+singleEvent_: "{{ _('Search in a single event') }}",
+ASSIGNEDUSER_: "{{ _('ASSIGNED USER') }}",
+assignedUser_: "{{ _('Assigned User') }}",
+unassigned_: "{{ _('Unassigned') }}",
+REVIEWER_: "{{ _('REVIEWER') }}",
+WORKFLOWSTATUS_: "{{ _('WORKFLOW STATUS') }}",
+workflowStatus_: "{{ _('Workflow Status') }}",
+REVIEWACTION_: "{{ _('REVIEW ACTION') }}",
+includeSources_: "{{ _('Include sources') }}",
+excludeSources_: "{{ _('Exclude sources (All)') }}",
+includeChildSources_: "{{ _('Also include child sources') }}",
+any_: "{{ _('Any') }}",
+all_: "{{ _('All') }}",
+includeLabels_: "{{ _('Include labels') }}",
+excludeLabels_: "{{ _('Exclude labels (All)') }}",
+includeChildLabels_: "{{ _('Also include child labels') }}",
+includeVerLabels_: "{{ _('Include verified labels') }}",
+excludeVerLabels_: "{{ _('Exclude verified labels (All)') }}",
+includeChildVerLabels_: "{{ _('Also include verified child labels') }}",
+includeLocations_: "{{ _('Include locations') }}",
+radius_: "{{ _('Radius') }}",
+meters_: "{{ _('Meters') }}",
+excludeLocations_: "{{ _('Exclude locations (All)') }}",
+includeOriginLocations_: "{{ _('Include origin locations (Any)') }}",
+excludeOriginLocations_: "{{ _('Exclude origin locations (All)') }}",
+includeEventLocations_: "{{ _('Include event locations') }}",
+eventType_ : "{{ _('Event type') }}",
+GEOSPATIAL_ : "{{ _('GEOSPATIAL') }}",
+clearSearch_: "{{ _('Clear Search') }}",
+search_: "{{ _('Search') }}",
+saveSearch_ : "{{ _('Save Search') }}",
+saveSearchAsNew_ : "{{ _('Save As New') }}",
+deleteSearch_ : "{{ _('Delete Search') }}",
+updateSearch_ : "{{ _('Update Search') }}",
+refineExtendSearch_ : "{{ _('Refine/Extend Search') }}",
+loadExistingSearch_ : "{{ _('Load existing search') }}",
+occupation_ : "{{ _('Occupation') }}",
+occupationAr_ : "{{ _('Occupation (Ar)') }}",
+position_ : "{{ _('Position') }}",
+positionAr_ : "{{ _('Position (Ar)') }}",
+spokenDialects_ : "{{ _('Spoken dialects') }}",
+familyStatus_ : "{{ _('Family Status') }}",
+noOfChildren_ : "{{ _('No of Children') }}",
+sex_ : "{{ _('Sex') }}",
+minorAdult_ : "{{ _('Minor/Adult') }}",
+civilian_ : "{{ _('Civilian/Non Civilian') }}",
+actorType_ : "{{ _('Actor Type') }}",
+ethnography_ : "{{ _('Ethnography') }}",
+nationality_ : "{{ _('Nationality') }}",
+yes_: "{{ _('Yes') }}",
+no_: "{{ _('No') }}",
+unknown_: "{{ _('Unknown') }}",
+details_: "{{ _('Details') }}",
+name_: "{{ _('Name') }}",
+reportingPersons_: "{{ _('Reporting Persons') }}",
+contactInfo_: "{{ _('Contact info ( phone, email, address)') }}",
+relation_: "{{ _('Relation') }}",
+relationship_: "{{ _('Relationship') }}",
+save_ : "{{ _('Save') }}",
+type_ : "{{ _('Type') }}",
+latitude_ : "{{ _('Latitude') }}",
+longitude_ : "{{ _('Longitude') }}",
+parent_ : "{{ _('Parent') }}",
+postalCode_ : "{{ _('Postal Code') }}",
+normal_ : "{{ _('Normal') }}",
+main_ : "{{ _('Main') }}",
+mainIncident_ : "{{ _('Main Incident') }}",
+filterRelatedItems_: "{{ _('Filter and display related items in main table') }}",
+loadMore_: "{{ _('Load More') }}",
+restricted_: "{{ _('Restricted') }}",
+unrestricted_: "{{ _('Unrestricted') }}",
+and_: "{{ _('And') }}",
+or_: "{{ _('Or') }}",
+ACCESSROLES_: "{{ _('ACCESS GROUPS') }}",
+accessRoles_: "{{ _('Access Groups') }}",
+noReviewNeeded_: "{{ _('No Review Needed') }}",
+needsReview_: "{{ _('Needs Review') }}",
+needsTranscription_: "{{ _('Needs Transcription') }}",
+loadGeoMap_: "{{ _('Load Geo Map') }}",
+by_: "{{ _('By') }}",
+searchLocations_: "{{ _('Search Locations') }}",
+locationType_: "{{ _('Location Type') }}",
+adminLevel_: "{{ _('Admin Level') }}",
+country_: "{{ _('Country') }}",
+estimated_: "{{ _('Estimated') }}",
+confirm_: "{{ _('Confirm')}}",
+areYouSure_: "{{ _('Are you sure?')}}",
+confirmation_: "{{ _('Confirmation')}}",
+areYouSureYouWantToProceed_: "{{ _('Are you sure you want to proceed?')}}",
+markAsRead_: "{{ _('Mark as read')}}",
+inApp_: "{{ _('In-app')}}",
+
+
+searchActivities_: "{{ _('Search Activities') }}",
+
+//bulletin/actor/incident cards
+id_: "{{ _('ID') }}",
+originid_: "{{ _('Origin ID') }}",
+edit_: "{{ _('Edit') }}",
+visualize_: "{{ _('Visualize') }}",
+description_ : "{{ _('Description') }}",
+publicDescription_ : "{{ _('Public Description') }}",
+title_: "{{ _('Title') }}",
+originalTitle_: "{{ _('Original Title') }}",
+sources_: "{{ _('Sources') }}",
+labels_: "{{ _('Labels') }}",
+verifiedLabels_: "{{ _('Verified Labels') }}",
+labelPath_: "{{ _('Label Path') }}",
+moreLabels_: (count) => "{{ _('+{count} more') }}".replace("{count}", count),
+events_: "{{ _('Events') }}",
+media_: "{{ _('Media') }}",
+locations_: "{{ _('Locations') }}",
+probability_: "{{ _('Probability') }}",
+relatedAs_: "{{ _('Related as') }}",
+relatedBulletins_: "{{ _('Related Bulletins') }}",
+relatedActors_: "{{ _('Related Actors') }}",
+relatedIncidents_: "{{ _('Related Incidents') }}",
+relationshipInfo_: "{{ _('Relationship Info') }}",
+publishDate_: "{{ _('Publish Date') }}",
+documentationDate_: "{{ _('Documentation Date') }}",
+sourceLink_: "{{ _('Source Link') }}",
+comments_ : "{{ _('Comments') }}",
+logHistory_: "{{ _('Log History') }}",
+
+// actors
+fullName_: "{{ _('Full Name') }}",
+nickname_: "{{ _('Nickname') }}",
+nicknameAr_: "{{ _('Nickname (Ar)') }}",
+nickName_: "{{ _('Nickname(s)') }}",
+firstName_: "{{ _('First Name') }}",
+middleName_: "{{ _('Middle Name(s)') }}",
+lastName_ : "{{ _('Last Name') }}",
+fathersName_ : "{{ _('Father\'s Name') }}",
+fathersNameAr_ : "{{ _('Father\'s Name (Ar)') }}",
+mothersName_ : "{{ _('Mother\'s Name') }}",
+mothersNameAr_ : "{{ _('Mother\'s Name (Ar)') }}",
+sex_ : "{{ _('Sex') }}",
+age_ : "{{ _('Age') }}",
+civilian_ : "{{ _('Civilian') }}",
+actorType_ : "{{ _('Actor Type') }}",
+relationshipWithBulletin_: (id) => "{{ _('Relationship with Bulletin {id}') }}".replace("{id}", id),
+relationshipBetweenActorAndBulletinWillBeCreated_ : "{{ _('The relationship between the new Actor and the Bulletin will be created when the Actor is saved') }}",
+
+originPlace_ : "{{ _('Place of Origin') }}",
+
+IDNUMBER_ : "{{ _('ID NUMBER') }}",
+idNumber_ : "{{ _('ID Number') }}",
+idNumbers_ : "{{ _('ID Numbers') }}",
+idType_ : "{{ _('ID Type') }}",
+areYouSureYouWantToDeleteThisRecord_ : "{{ _('Are you sure you want to delete this record?') }}",
+leaveBlankToIncludeAllTypes_ : "{{ _('Leave blank to include all types.') }}",
+
+occupation_ : "{{ _('Occupation') }}",
+position_ : "{{ _('Position') }}",
+spokenDialects_ : "{{ _('Spoken Dialects') }}",
+familyStatus_ : "{{ _('Family Status') }}",
+
+ethnographicInformation_ : "{{ _('Ethnographic Information') }}",
+nationalities_ : "{{ _('Nationalities') }}",
+nationalIDCard_ : "{{ _('National ID Card') }}",
+
+overview_ : "{{ _('Overview') }}",
+
+// incidents
+CLAIMEDVIOLATIONSCATEGORIES_  : "{{ _('CLAIMED VIOLATIONS CATEGORIES') }}",
+claimedViolationsCategories_  : "{{ _('Claimed Violations Categories') }}",
+potentialViolationsCategories_  : "{{ _('Potential violation categories') }}",
+POTENTIALVIOLATIONSCATEGORIES_  : "{{ _('POTENTIAL VIOLATION CATEGORIES') }}",
+
+// Geo markers
+geoMarkers_: "{{ _('Geo Markers') }}",
+addGeoMarker_: "{{ _('Add Geo Marker') }}",
+
+// missing persons
+missingPerson_ : "{{ _('Missing Person') }}",
+
+placeOfDisappearance_ : "{{ _('Place of Disappearance') }}",
+marriageHistory_ : "{{ _('Marriage History') }}",
+bioChildren_ : "{{ _('Bio Children') }}",
+pregnantAtDisappearance_ : "{{ _('Pregnant at Disappearance') }}",
+mpAtDisappearance_ : "{{ _('Months Pregnant at Disappearance') }}",
+missingRelatives_ : "{{ _('Missing Relatives') }}",
+name_ : "{{ _('Name') }}",
+address_ : "{{ _('Address') }}",
+phone_ : "{{ _('Phone') }}",
+email_ : "{{ _('Email') }}",
+seenInDetentionCenter_ : "{{ _('Seen in a detention center?') }}",
+injuredDisappearance_ : "{{ _('Injured around time of disappearance?') }}",
+knownDead_ : "{{ _('Known to be dead?') }}",
+deathDetails_ : "{{ _('Details about circumstances of death') }}",
+personalItemsEg_ : "{{ _('Personal Items (watch,ring,chains etc)') }}",
+height_ : "{{ _('Height') }}",
+weight_ : "{{ _('Weight') }}",
+physique_ : "{{ _('Physique') }}",
+hairloss_ : "{{ _('Hair Loss') }}",
+hairtype_ : "{{ _('Hair Type') }}",
+hairlength_ : "{{ _('Hair Length') }}",
+haircolor_ : "{{ _('Hair Color') }}",
+facialhair_ : "{{ _('Facial Hair') }}",
+postureNotes_ : "{{ _('Notes on posture and walking style') }}",
+skinMarkings_ : "{{ _('Skin Markings') }}",
+handedness_ : "{{ _('Handedness') }}",
+glasses_ : "{{ _('Glasses') }}",
+eyecolor_ : "{{ _('Eye Color') }}",
+characteristicsCongenital_ : "{{ _('Distinctive characteristics (congenital)') }}",
+characteristicsAcquired_ : "{{ _('Distinctive characteristics (acquired)') }}",
+physicalHabits_ : "{{ _('Physical habits') }}",
+otherComments_ : "{{ _('Other comments') }}",
+physiciansContact_ : "{{ _('Physician\'s name and contact') }}",
+fracturesInjuries_ : "{{ _('Fractures / Injuries') }}",
+implants_  : "{{ _('Implants ') }}",
+congenitalMalformations_ : "{{ _('Congenital malformations') }}",
+painAilments_ : "{{ _('Pain and / or ailments') }}",
+otherMedicalConditions_ : "{{ _('Other medical conditions') }}",
+accidents_ : "{{ _('Accidents') }}",
+prescriptionDrugsTaken_ : "{{ _('Prescription drugs taken') }}",
+smoker_ : "{{ _('Smoker') }}",
+isDentalRecord_ : "{{ _('Is there a Dental Record') }}",
+DentistContact_ : "{{ _('Dentist\'s name and contact') }}",
+teethFeatures_ : "{{ _('Teeth features') }}",
+dentalProblems_ : "{{ _('Dental problems') }}",
+dentalTreatments_ : "{{ _('Dental treatments') }}",
+dentalHabits_ : "{{ _('Dental habits') }}",
+caseStatus_ : "{{ _('Case status') }}",
+reporters_ : "{{ _('Reporters') }}",
+identifiedBy : "{{ _('Identified by (responsible institution)') }}",
+familyNotified_ : "{{ _('Was the family notified?') }}",
+reburialLocation_ : "{{ _('Location of reburial') }}",
+detailsPersonSawLast_ : "{{ _('Details of the person who saw them last') }}",
+//mpfield
+contact_ : "{{ _('Contact') }}",
+
+
+// extras
+
+time_ : "{{ _('Time') }}",
+status_: "{{ _('Status') }}",
+
+// visualization
+actors_ : "{{ _('Actors') }}",
+bulletins_ : "{{ _('Bulletins') }}",
+incidents_ : "{{ _('Incidents') }}",
+visInfo_ : "{{ _('Double click on a node to expand graph, click and hold CTRL to view') }}",
+
+// import
+importDate_: "{{ _('Import Date') }}",
+file_: "{{ _('File') }}",
+importLog_: "{{ _('Import Log') }}",
+
+// export
+requestedOn_ : "{{ _('Requested On') }}",
+expiresOn_ : "{{ _('Expires On') }}",
+adminActions_ : "{{ _('Admin Actions') }}",
+approve_ : "{{ _('Approve') }}",
+expireNow_ : "{{ _('Expire Now') }}",
+reject_ : "{{ _('Reject') }}",
+changeExpiry_ : "{{ _('Change Expiry') }}",
+setExpiry_ : "{{ _('Set Expiry') }}",
+exportExpiry_ : "{{ _('Export Expiry') }}",
+
+
+maybe_ : "{{ _('Maybe') }}",
+likely_ : "{{ _('Likely') }}",
+certain_ : "{{ _('Certain') }}",
+
+// System logs
+message_ : "{{ _('Message') }}",
+stacktrace_: "{{ _('Stacktrace') }}",
+endpoint_: "{{ _('Endpoint') }}",
+userid_: "{{ _('User ID') }}",
+lineno_: "{{ _('Line No') }}",
+path_: "{{ _('Path') }}",
+errType_: "{{ _('Error Type') }}",
+level_: "{{ _('Level') }}",
+time_: "{{ _('Time') }}",
+refreshLogs: "{{ _('Refresh available log files and select latest log file') }}",
+noLogs: "{{ _('No log files available') }}",
+
+// Notifications
+URGENT_: "{{ _('URGENT') }}",
+noNotificationsYet_: "{{ _('No notifications yet') }}",
+noNotificationsYetDescription_: "{{ _("You haven't received any notifications yet. When you do, they'll appear here.") }}",
+loadMore_: "{{ _('Load more') }}",
+noMoreNotificationsToLoad_: "{{ _('No more notifications to load.') }}",
+notificationsCouldNotBeLoaded_: "{{ _('Oops! Notifications couldn’t be loaded') }}",
+weAreHavingTroubleFetchingNotifications_: "{{ _('We’re having trouble fetching your notifications right now. Check your connection or refresh the page.') }}",
+couldNotLoadMoreNotifications_: "{{ _('We couldn’t load more notifications. Please try again.') }}",
+oops_: "{{ _('Oops') }}",
+retry_: "{{ _('Retry') }}",
+
+// Activity Search Box
+USER_: "{{ _('USER') }}",
+SELECTTYPE_: "{{ _('SELECT TYPE') }}",
+SELECTACTION_: "{{ _('SELECT ACTION') }}",
+activityDate_: "{{ _('Activity Date') }}",
+
+// Actor Search Box
+selEventType_: "{{ _('Select Event Type') }}",
+
+// Bulletin Search Box
+exactMatch_: "{{ _('Exact Match') }}",
+
+// Address
+addrLine1_: "{{ _('Address Line 1') }}",
+addrLine2_: "{{ _('Address Line 2') }}",
+city_: "{{ _('City') }}",
+street_: "{{ _('Street') }}",
+streetNo_: "{{ _('Street No') }}",
+
+// Editable table
+confirmDelete_: "{{ _('Are you sure you want to delete') }}",
+confirmDeleteEvent_: "{{ _('Confirm deleting this event?') }}",
+
+//Export card
+includeMedia_: "{{ _('Include Media') }}",
+exportFormat_: "{{ _('Export format') }}",
+
+// Export Download
+download_: "{{ _('Download') }}",
+
+// Relate Incidents
+notFound_: "{{ _('Oops! We couldn\'t find this item.') }}",
+
+// User Card
+loggedOut_: "{{ _('You have been logged out. Please log in again.') }}",
+confirmLogout_: "{{ _('Are you sure you want to log out all sessions for this user?') }}",
+userPermissions_: "{{ _('User Permissions') }}",
+userTwoFactorMethods_: "{{ _('User 2FA Methods') }}",
+noTwoFactorMethods_: "{{ _('2FA Inactive') }}",
+canViewUsernames_: "{{ _('Can View Usernames') }}",
+cannotViewUsernames_: "{{ _('Cannot View Usernames') }}",
+canViewSimpleHistory_: "{{ _('Can View Simple History') }}",
+cannotViewSimpleHistory_: "{{ _('Cannot View Simple History') }}",
+canViewFullHistory_: "{{ _('Can View Full History') }}",
+cannotViewFullHistory_: "{{ _('Cannot View Full History') }}",
+canEditLocations_: "{{ _('Can Edit Locations') }}",
+cannotEditLocations_: "{{ _('Cannot Edit Locations') }}",
+canExport_: "{{ _('Can Export') }}",
+cannotExport_: "{{ _('Cannot Export') }}",
+canSelfAssign_: "{{ _('Can Self Assign') }}",
+cannotSelfAssign_: "{{ _('Cannot Self Assign') }}",
+userSessions_: "{{ _('User Sessions') }}",
+session_: "{{ _('Session') }}",
+ip_: "{{ _('IP') }}",
+userAgent_: "{{ _('User Agent') }}",
+started_: "{{ _('Started') }}",
+logOffDevice_: "{{ _('Log off this device') }}",
+
+// Geomap
+enterFullscreen_: "{{ _('View Fullscreen') }}",
+exitFullscreen_: "{{ _('Exit Fullscreen') }}",
+number_: "{{ _('Number') }}",
+coordinates_: "{{ _('Coordinates') }}",
+type_: "{{ _('Type') }}",
+eventType_: "{{ _('Event Type') }}",
+parentId_: "{{ _('Parent ID') }}",
+
+// Media
+image_preview_ : "{{ _('Preview Image') }}",
+video_preview_ : "{{ _('Play Video') }}",
+pdf_preview_ : "{{ _('Open PDF in PDF Viewer') }}",
+file_preview_ : "{{ _('Download File') }}",
+category_ : "{{ _('Category') }}",
+duration_ : "{{ _('Duration') }}",
+click_to_copy_ : "{{ _('Click to copy') }}",
+etag_ : "{{ _('File Hash') }}",
+filename_ : "{{ _('Filename') }}",
+previewNotAvailable_ : "{{ _('Preview not available') }}",
+downloadFile_ : "{{ _('Download file') }}",
+onlyRedactionsCanBeDeleted_: "{{ _('Only redactions can be deleted') }}",
+redact_: "{{ _('Redact') }}",
+youreAboutToDeleteARedactedCopy_: "{{ _('You\'re about to delete a redacted copy') }}",
+deletingTheRedactedCopyWillNotDeleteTheOriginalMedia_: "{{ _('Deleting this redacted copy will not delete the original media.') }}",
+deleteRedaction_: "{{ _('Delete Redaction') }}",
+
+// System Administration
+defaultsLoaded_: "{{ _('Default settings loaded. Click Save to apply changes.') }}",
+field_: "{{ _('Field') }}",
+previous_: "{{ _('Previous') }}",
+updated_: "{{ _('Updated') }}",
+unset_: "{{ _('UNSET') }}",
+on_: "{{ _('On') }}",
+off_: "{{ _('Off') }}",
+
+// Component Data
+include_postal_code_ : "{{ _('Include Postal Code') }}",
+logger_ : "{{ _('Logger') }}",
+// bulletin location types
+bulletinLocTypes_:
+[
+{"en": "Locations", "tr": "{{ _('Locations') }}", "code": "locations"},
+{"en": "Geo Markers", "tr": "{{ _('Geo Markers') }}", "code": "geomarkers"},
+{"en": "Events", "tr": "{{ _('Events') }}", "code": "events"}
+],
+
+// actor location types
+actorLocTypes_:
+[
+{"en": "Origin Place", "tr": "{{ _('Origin Place') }}", "code": "originplace"},
+{"en": "Events", "tr": "{{ _('Events') }}", "code": "events"}
+],
+
+//countries
+countries : {{ config.COUNTRIES|to_config|tojson }},
+
+
+actorTypes: [
+{"en": "Person", "tr": "{{ _('Person') }}"},
+{"en": "Entity", "tr": "{{ _('Entity') }}"}
+],
+
+actorSex: [
+{"en": "Male", "tr": "{{ _('Male') }}"},
+{"en": "Female", "tr": "{{ _('Female') }}"},
+],
+
+actorAge: [
+{"en": "Minor","tr": "{{ _('Minor') }}"},
+{"en": "Adult","tr": "{{ _('Adult') }}"},
+{"en": "Unknown","tr": "{{ _('Unknown') }}"}
+],
+
+actorCivilian: [
+{"en": "Unknown", "tr": "{{ _('Unknown') }}"},
+{"en": "Civilian", "tr": "{{ _('Civilian') }}"},
+{"en": "Non-Civilian", "tr": "{{ _('Non-Civilian') }}"},
+{"en": "Police", "tr": "{{ _('Police') }}"},
+{"en": "Other Security Forces", "tr": "{{ _('Other Security Forces') }}"}
+],
+
+actorFamilyStatuses: [
+{"en": "Single", "tr": "{{ _('Single') }}"},
+{"en": "Married", "tr": "{{ _('Married') }}"},
+{"en": "Seperated", "tr": "{{ _('Seperated') }}"},
+{"en": "Divorced", "tr": "{{ _('Divorced') }}"},
+{"en": "Widowed", "tr": "{{ _('Widowed') }}"},
+],
+
+//Bulletin to Actor relations
+btoaRelateAs : {{ 'atob'|get_data }},
+
+// Incident to Actor
+itoaRelateAs : {{ 'itoa'|get_data }},
+
+atoaRelateAs : {{ 'atoa'|get_data }},
+
+btobRelateAs : {{ 'btob'|get_data }},
+itobRelateAs : {{ 'itob'|get_data }},
+itoiRelateAs : {{ 'itoi'|get_data }},
+
+statuses : {{ 'workflow_status'|get_data }},
+
+probs : [
+{"en": "Maybe", "tr": "{{ _('Maybe') }}"},
+{"en": "Likely", "tr": "{{ _('Likely') }}"},
+{"en": "Certain", "tr": "{{ _('Certain') }}"}
+],
+
+
+loggedOut_: "{{ _('You have been logged out. Please log in again.') }}",
+logoutConfirmation_: "{{ _('Are you sure you want to log out all sessions for this user?') }}",
+logoutSessionConfirmation_: "{{ _('Are you sure you want to end the session for this device?') }}",
+allSessionsLoggedOut_: "{{ _('All sessions for the user have been logged out successfully.') }}",
+loggedOutSession_: "{{ _('Logged out session') }}",
+errorFetchingSessions_: "{{ _('Error fetching sessions') }}",
+errorLoggingOutSession_: "{{ _('Error logging out session') }}",
+errorLoggingOutAllSessions_: "{{ _('Error logging out all sessions for user ID:') }}",
+userPermissions_: "{{ _('User Permissions') }}",
+canViewUsernames_: "{{ _('Can View Usernames') }}",
+canViewSimpleHistory_: "{{ _('Can View Simple History') }}",
+canViewFullHistory_: "{{ _('Can View Full History') }}",
+canEditLocations_: "{{ _('Can Edit Locations') }}",
+canExport_: "{{ _('Can Export') }}",
+canSelfAssign_: "{{ _('Can Self Assign') }}",
+userSessions_: "{{ _('User Sessions') }}",
+session_: "{{ _('Session') }}",
+ip_: "{{ _('IP') }}",
+userAgent_: "{{ _('User Agent') }}",
+started_: "{{ _('Started') }}",
+logOffThisDevice_: "{{ _('Log off this device') }}",
+active_: "{{ _('Active') }}",
+inactive_: "{{ _('Inactive') }}",
+logoutAllSessions_: "{{ _('Logout All Sessions') }}",
+resetPassword_: "{{ _('Reset password') }}",
+passwordResetAlreadyRequested_: "{{ _('Password reset already requested.') }}",
+passwordResetRequested_: "{{ _('Password reset requested.') }}",
+forcePasswordReset_: "{{ _('Force password reset') }}",
+revoke2fa_: "{{ _('Revoke 2FA') }}",
+
+// validations
+mustBeMaxCharactersOrFewer_: (max) => "{{ _('Must be {max} characters or fewer.') }}".replace("{max}", max),
+mustBeAtLeastCharacters_: (min) => "{{ _('Must be at least {min} characters.') }}".replace("{min}", min),
+thisFieldIsRequired_: "{{ _('This field is required.') }}",
+pleaseEnterAValidNumber_: "{{ _('Please enter a valid number.') }}",
+
+
+}
+
+    // add localized configurations for lists with static values
+
+translations['physique'] = [
+    {% for opt in config.CONSTANTS.PHYSIQUE_OPTS %}
+        {"en": "{{ opt }}", "tr": "{{ _(opt) }}"},
+    {% endfor %}
+];
+
+translations['pregnant'] = [
+    {% for opt in config.CONSTANTS.PREGNANT_AT_DISAPPEARANCE_OPTS %}
+        {"en": "{{ opt }}", "tr": "{{ _(opt) }}"},
+    {% endfor %}
+];
+
+translations['glasses'] = [
+    {% for opt in config.CONSTANTS.CLASSIC_OPTS %}
+        {"en": "{{ opt }}", "tr": "{{ _(opt) }}"},
+    {% endfor %}
+];
+
+translations['hairLoss'] = [
+    {% for opt in config.CONSTANTS.HAIR_LOSS_OPTS %}
+        {"en": "{{ opt }}", "tr": "{{ _(opt) }}"},
+    {% endfor %}
+];
+
+translations['hairType'] = [
+    {% for opt in config.CONSTANTS.HAIR_TYPE_OPTS %}
+        {"en": "{{ opt }}", "tr": "{{ _(opt) }}"},
+    {% endfor %}
+];
+
+translations['hairLength'] = [
+    {% for opt in config.CONSTANTS.HAIR_LENGTH_OPTS %}
+        {"en": "{{ opt }}", "tr": "{{ _(opt) }}"},
+    {% endfor %}
+];
+
+translations['hairColor'] = [
+    {% for opt in config.CONSTANTS.HAIR_COLOR_OPTS %}
+        {"en": "{{ opt }}", "tr": "{{ _(opt) }}"},
+    {% endfor %}
+];
+
+translations['facialHair'] = [
+    {% for opt in config.CONSTANTS.FACIAL_HAIR_OPTS %}
+        {"en": "{{ opt }}", "tr": "{{ _(opt) }}"},
+    {% endfor %}
+];
+
+translations['skinMarkings'] = [
+    {% for opt in config.CONSTANTS.SKIN_MARKINGS_OPTS %}
+        {"en": "{{ opt }}", "tr": "{{ _(opt) }}"},
+    {% endfor %}
+];
+
+translations['handness'] = [
+    {% for opt in config.CONSTANTS.HANDEDNESS_OPTS %}
+        {"en": "{{ opt }}", "tr": "{{ _(opt) }}"},
+    {% endfor %}
+];
+
+translations['smoker'] = [
+    {% for opt in config.CONSTANTS.SMOKER_OPTS %}
+        {"en": "{{ opt }}", "tr": "{{ _(opt) }}"},
+    {% endfor %}
+];
+
+translations['eyeColor'] = [
+    {% for opt in config.CONSTANTS.HAIR_COLOR_OPTS %}
+        {"en": "{{ opt }}", "tr": "{{ _(opt) }}"},
+    {% endfor %}
+];
+
+translations['caseStatus'] = [
+    {% for opt in config.CONSTANTS.CASE_STATUS_OPTS %}
+        {"en": "{{ opt }}", "tr": "{{ _(opt) }}"},
+    {% endfor %}
+];
+
+translations['levels'] = {
+    "error": "{{ _('Error') }}",
+    "warning": "{{ _('Warning') }}",
+    "info": "{{ _('Info') }}",
+    "debug": "{{ _('Debug') }}"
+}
+
+translations['whisperModels'] = [
+    {% for model in config.CONSTANTS.WHISPER_MODEL_OPTS %}
+        {"en": "{{ model['model_label'] }}", "tr": "{{ _(model['model_label']) }}"},
+    {% endfor %}
+];

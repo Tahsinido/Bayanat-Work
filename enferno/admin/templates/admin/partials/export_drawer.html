@@ -1,0 +1,70 @@
+<v-navigation-drawer
+        v-model="exportDrawer"
+        fixed
+        location="right"
+        temporary
+        width="440"
+        app
+        disable-route-watcher
+>
+
+    <v-card>
+        <v-toolbar class="d-flex px-2">
+
+            {{ _('Export Data') }}
+            <v-spacer></v-spacer>
+            <v-btn
+                    class="float-right"
+                    @click="exportDrawer=false"
+                    icon="mdi-close"
+            ></v-btn>
+
+
+        </v-toolbar>
+
+        <v-card-text>
+
+            <div class="caption mb-2">{{ _('Export format') }}</div>
+
+            <v-btn-toggle color="primary" mandatory v-model="exportConfig.format">
+                <v-btn prepend-icon="mdi-file-pdf-box" value="pdf">
+                    pdf
+                </v-btn>
+                <v-btn v-if="!exportConfig.hideCSV" prepend-icon="mdi-file-delimited" value="csv">
+                    csv
+                </v-btn>
+                <v-btn prepend-icon="mdi-code-json" value="json">
+                    json
+                </v-btn>
+            </v-btn-toggle>
+        </v-card-text>
+
+        <v-card-text>
+            <v-switch v-if="!exportConfig.hideMedia" v-model="exportConfig.includeMedia"
+                      label="{{ _('Include media') }}"></v-switch>
+
+            <v-combobox
+                    chips
+                    multiple
+                    v-model="exportConfig.tags"
+                    label="{{ _('Tags') }}"
+                    class="mr-2"
+            ></v-combobox>
+
+        </v-card-text>
+
+        <v-card-text>
+
+            <v-textarea variant="outlined" rows="3"
+                        v-model="exportConfig.comment"
+                        label="{{ _('Comments') }}">
+
+            </v-textarea>
+        </v-card-text>
+        <v-card-actions class="pa-4">
+            <v-btn @click.stop="exportRequest" color="primary" variant="elevated"
+                   class="primary mx-auto">{{ _('Create Export Request') }}</v-btn>
+        </v-card-actions>
+    </v-card>
+
+</v-navigation-drawer>

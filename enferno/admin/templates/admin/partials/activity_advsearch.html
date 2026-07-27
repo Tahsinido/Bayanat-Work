@@ -1,0 +1,9 @@
+<v-dialog v-model="advSearchOpen" width="770">
+    <activity-search-box
+            @close="advSearchOpen=false"
+            v-model="q"
+            @search="refresh()"
+    ></activity-search-box>
+</v-dialog>
+
+

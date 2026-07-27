@@ -1,0 +1,33 @@
+<!--  Grid of Incidents Items -->
+<div class="wrapper overflow-hidden">
+    <div class="d-flex overflow-auto">
+
+        <v-sheet min-width="390" v-for="(item,index) in editedItem.incident_relations" :key="index">
+
+
+            <incident-result :incident="item.incident">
+
+                <template #header>
+                    <relation-editor-card
+                            variant="text"
+                            v-model:relation="editedItem.incident_relations[index]"
+                            :multi-relation="incidentRelationMultiple"
+                            :relation-types="incidentRelationTypes"
+                    ></relation-editor-card>
+                    <v-divider></v-divider>
+                </template>
+
+                <template #actions>
+                    <v-btn
+                            @click="removeIncident($event,index)"
+                            size="small"
+                            icon="mdi-delete-sweep"
+                            color="red">
+                    </v-btn>
+                </template>
+
+            </incident-result>
+
+        </v-sheet>
+    </div>
+</div>

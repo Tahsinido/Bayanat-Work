@@ -1,0 +1,113 @@
+<v-dialog v-model="advSearchExpand" class="w-sm-100 w-md-75">
+
+    <v-sheet>
+        <v-card class="rounded-0">
+
+            <v-card-title>
+                <v-btn icon="mdi-close" variant="text" class="float-right" @click="advSearchExpand=false"></v-btn>
+            </v-card-title>
+
+            <v-card-text>
+                <v-select ref="savedSearchDropdown"
+
+                          :label="translations.loadExistingSearch_"
+                          :items="searches"
+                          item-title="name"
+                          item-value="id"
+                          return-object
+                          @click="loadSearchesFromAPI"
+                          @click:clear="resetQuery"
+
+                          clearable
+                          v-model="savedSearchSelection"
+                >
+                    <template v-slot:item="{ props, item }">
+                        <v-list-item :subtitle="item.name" v-bind="props" @click="loadSearch(item.raw)">
+                            <template #append>
+                                <v-icon
+                                    color="warning"
+                                    @click.stop="deleteSearch(item.raw.id)">mdi-delete
+                                </v-icon>
+                            </template>
+                        </v-list-item>
+                    </template>
+                </v-select>
+                <v-expansion-panels accordion v-model="searchPanels">
+                    <v-expansion-panel v-for="(q,i) in search"
+
+                    >
+                        <v-expansion-panel-title>${translations.query_} ${i+1} <span v-if="!i==0" class="mx-3">
+                        <v-icon
+                                @click.stop="removeQueryAt(i)" color="red">mdi-minus-circle</v-icon></span>
+                        </v-expansion-panel-title>
+                        <v-expansion-panel-text>
+                            {{ i }}
+
+                            <bulletin-search-box
+                                    v-if="advSearchExpand"
+                                    :show-op="!i==0"
+                                    @close="advSearchExpand=false"
+                                    v-model="search[i]"
+                                    :users="users"
+                                    :roles="allowedRoles"
+                                    :is-admin="has_role(currentUser,'Admin')"
+                            >
+                            </bulletin-search-box>
+                        </v-expansion-panel-text>
+                    </v-expansion-panel>
+                </v-expansion-panels>
+            </v-card-text>
+
+        </v-card>
+
+
+        <v-card  class="text-center rounded-0 sticky-bottom-bar">
+            <v-divider></v-divider>
+
+            <v-card-actions class="pa-4 ga-2">
+                <v-btn prepend-icon="mdi-link-plus" class="ma-3" @click="addQuery">
+
+                    ${translations.refineExtendSearch_}
+                </v-btn>
+                <v-spacer></v-spacer>
+                <v-btn @click="search=[{}]" text>{{ _('Clear Search') }}</v-btn>
+                <v-btn v-if="!savedSearchSelection" @click="openSaveQueryDialog" color="grey"
+                       depressed>{{ _('Save Search') }}</v-btn>
+                <v-btn
+                        v-if="savedSearchSelection"
+                        @click="updateSearch"
+                        color="warning"
+                        depressed
+                >{{ _('Update Search') }}</v-btn>
+                <v-btn
+                        v-if="savedSearchSelection"
+                        @click="openSaveQueryDialog"
+                        color="warning"
+                        depressed
+                >{{ _('Save As New') }}</v-btn>
+                <v-btn @click="doSearch" color="primary" variant="elevated">{{ _('Search') }}</v-btn>
+            </v-card-actions>
+        </v-card>
+        <v-dialog width="300" v-model="saveQueryDialog">
+            <v-card class="pa-3">
+                <v-card-text>
+                    <v-text-field
+                            ref="saveQueryInput"
+                            v-model="queryName"
+                            @keydown.enter="saveSearch"
+                            label="{{ _('Name this search') }}"
+
+                    ></v-text-field>
+
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn @click="saveQueryDialog=false" text>{{ _('Cancel') }}</v-btn>
+                    <v-btn @click="saveSearch" color="primary">{{ _('Save') }}</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+    </v-sheet>
+</v-dialog>
+
+

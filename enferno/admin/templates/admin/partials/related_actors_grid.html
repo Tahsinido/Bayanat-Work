@@ -1,0 +1,35 @@
+<div class="wrapper overflow-hidden">
+        <div class="d-flex overflow-auto">
+            <v-sheet min-width="390" v-for="(item,index) in editedItem.actor_relations" :key="index">
+                <actor-result :actor="item.actor">
+                    <!--  attach relationship form -->
+                    <template #header>
+                        <relation-editor-card
+                                variant="text"
+                                v-model:relation="editedItem.actor_relations[index]"
+                                :multi-relation="actorRelationMultiple"
+                                :relation-types="actorRelationTypes"
+                        ></relation-editor-card>
+                        <v-divider></v-divider>
+                    </template>
+
+                    <template #actions>
+                        <v-btn
+                                @click="removeActor($event,index)"
+                                size="small"
+                                icon="mdi-delete-sweep"
+                                variant="plain"
+                                color="red"
+                        >
+                        </v-btn
+                        >
+                    </template>
+
+                </actor-result>
+
+            </v-sheet>
+
+        </div>
+
+
+    </div>

@@ -1,0 +1,41 @@
+*.pyc
+.webassets-cache
+.idea
+celerybeat-schedule
+env
+local_settings.py
+node_modules/
+.DS_Store
+.sass-cache
+flask_session
+.vscode 
+.mypy_cache/
+.history
+celerybeat-schedule.db
+.env*
+enferno/media/*
+*.log
+*.csv
+*.xls
+*.xlsx
+.aws
+config.json
+build
+docs/.vitepress/dist
+docs/.vitepress/cache
+backups/*
+
+.cursorrules
+.windsurfrules
+cookies.txt
+
+*.egg-info/
+
+# Release signing: NEVER commit secret keys. The pinned public key is baked
+# into the installer/updater, not stored as a loose file in the repo.
+*.key
+bayanat-release.key
+bayanat-release.pub
+
+# Auto-generated local tooling scan (contains local machine paths)
+.claude/cloude-code-toolbox-mcp-skills-awareness.md

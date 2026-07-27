@@ -1,0 +1,639 @@
+{% extends 'layout.html' %}
+{% block css %}
+<link rel="stylesheet" href="/static/js/dropzone/dropzone.min.css?v={{ config.VERSION }}">
+    <link rel="stylesheet" href="/static/js/videojs/video-js.min.css?v={{ config.VERSION }}">
+
+
+{% endblock %}
+{% block content %}
+
+            <v-main class="align-start ma-4">
+                            <v-stepper v-model="step" >
+                                <v-stepper-header>
+                                    <v-stepper-item title="{{ _('Upload or Select') }}" value="1"></v-stepper-item>
+                                    <v-divider></v-divider>
+
+                                    <v-stepper-item title="{{ _('Add Data') }}" value="2"></v-stepper-item>
+                                    <v-divider></v-divider>
+                                    <v-stepper-item title="{{ _('Finish') }}" value="3"></v-stepper-item>
+                                </v-stepper-header>
+
+                                <v-stepper-window>
+                                    <v-stepper-window-item value="1">
+                                        <v-data-table
+                                                fixed-header
+                                                height="calc(100vh - 290px)"
+                                                :headers="headers"
+                                                :items="items"
+                                                :options.sync="options"
+                                                :loading="loading"
+                                                class="elevation-1"
+                                                show-select
+                                                v-model="selectedItems"
+                                                return-object
+
+                                        >
+                                            <template v-slot:top="{item}">
+                                                <v-toolbar>
+
+                                                    <v-btn 
+                                                        icon="mdi-check-all" 
+                                                        :disabled="selAllDisabled" 
+                                                        @click="selectAll" 
+                                                        size="small">
+                                                    </v-btn>
+                                                    <v-btn 
+                                                        :disabled="!selectedItems.length" 
+                                                        @click="clearAll" 
+                                                        size="small"
+                                                        icon="mdi-checkbox-blank-outline"
+                                                        class="mx-3">
+                                                    </v-btn>
+
+                                                    <v-divider vertical></v-divider>
+
+                                                    <v-btn :disabled="mode==2" variant="elevated" size="small"
+                                                           class="mx-3 hidden-md-and-up"
+                                                           @click="uploadFiles"
+                                                           color="primary"
+                                                           icon="mdi-upload"
+                                                    >
+                                                    </v-btn>
+
+                                                    <v-btn :disabled="mode==1" @click="selectPath"
+                                                           size="small"
+                                                           color="primary"
+                                                           icon="mdi-folder-open"
+                                                           class="hidden-md-and-up">
+                                                    </v-btn>
+
+                                                    <v-tooltip location="top">
+                                                        <template v-slot:activator="{props}">
+                                                            <v-btn :disabled="mode==2" size="small" v-bind="props"
+                                                                   class="mx-3 hidden-sm-and-down"
+                                                                   @click="uploadFiles"
+                                                                   color="primary"
+                                                                   variant="elevated"
+                                                                   prepend-icon="mdi-upload"
+                                                            >
+                                                                {{ _('Upload files') }}
+                                                            </v-btn>
+                                                        </template>
+                                                        <span>{{ _('Manual web upload') }}</span>
+                                                    </v-tooltip>
+
+                                                    <v-tooltip location="top">
+                                                        <template v-slot:activator="{props}">
+                                                            <v-btn :disabled="mode==1 || !etlPathImport"
+                                                                   @click="selectPath" size="small"
+                                                                   v-bind="props" color="primary" class="hidden-sm-and-down">
+                                                                <v-icon left> mdi-folder-open</v-icon>
+                                                                {{ _('Process path') }}
+                                                            </v-btn>
+                                                        </template>
+                                                        <span>
+                                                        {{ _('Process existing files in a path on the server.') }}
+                                                    </span>
+                                                    </v-tooltip>
+
+                                                    <v-spacer></v-spacer>
+
+                                                    <v-btn size="small" class="mx-2 hidden-sm-and-down"
+                                                           @click="toStepTwo"
+                                                           :disabled="!selectedItems.length"
+                                                           append-icon="mdi-chevron-right"
+                                                           :dark="selectedItems.length?true:false"
+                                                           color="primary"
+                                                           variant="elevated"
+                                                           >
+                                                        {{ _('Next') }}
+                                                    </v-btn>
+                                                    
+                                                </v-toolbar>
+
+                                            </template>
+
+
+                                            <template v-slot:no-data=""></template>
+                                        </v-data-table>
+
+
+                                    </v-stepper-window-item>
+
+
+                                    <v-stepper-window-item value="2">
+                                        <v-toolbar color="white">
+                                            <v-btn size="small" class="mx-2" @click="toStepOne"
+                                                        prepend-icon="mdi-chevron-left"
+                                                   elevation="1">
+                                                  {{ _('Back') }}
+                                            </v-btn>
+                                            <v-spacer></v-spacer>
+                                            <v-btn size="small" class="mx-2" @click="processFiles"
+
+                                                   color="success"
+                                                   elevation="1">
+                                                <v-icon left color="white">mdi-play-circle</v-icon>
+                                                {{ _('Process') }}
+                                            </v-btn>
+                                        </v-toolbar>
+
+                                        <v-card class="pa-3">
+                                            <v-card-title>
+                                                {{ _('Attach data to files') }}
+                                            </v-card-title>
+                                            <v-card-text>
+                                                <v-row>
+                                                    <v-col cols="12" md="4">
+
+                                                        <search-field
+                                                                api="/admin/api/roles/"
+                                                                item-title="name"
+                                                                item-value="id"
+                                                                :multiple="true"
+                                                                label="{{ _('Access Roles') }}"
+                                                                v-model="roles"
+                                                        ></search-field>
+
+
+                                                    </v-col>
+                                                    <v-col cols="12" md="4">
+                                                        <label-search-field
+                                                                :query-params="{ typ: 'for_bulletin', mode: 2 }"
+                                                                :multiple="true"
+                                                                :retain-search="true"
+                                                                label="{{ _('Labels') }}"
+                                                                v-model="labels"
+                                                        ></label-search-field>
+                                                    </v-col>
+                                                    <v-col cols="12" md="4">
+                                                        <label-search-field
+                                                                :query-params="{ fltr: 'verified', typ: 'for_bulletin', mode: 2 }"
+                                                                :multiple="true"
+                                                                :retain-search="true"
+                                                                label="{{ _('Verified Labels') }} "
+                                                                v-model="verLabels"
+                                                        ></label-search-field>
+                                                    </v-col>
+                                                </v-row>
+                                                <v-row>
+                                                    <v-col cols="12" md="4">
+                                                        <location-search-field
+                                                                api="/admin/api/locations/"
+                                                                item-title="full_string"
+                                                                item-value="id"
+                                                                :multiple="true"
+                                                                label="{{ _('Locations') }}"
+                                                                v-model="locations"
+
+                                                        ></location-search-field>
+                                                    </v-col>
+                                                    <v-col cols="12" md="4">
+                                                        <search-field
+                                                                api="/admin/api/sources/"
+                                                                item-title="title"
+                                                                item-value="id"
+                                                                :multiple="true"
+                                                                label="{{ _('Sources') }}"
+                                                                v-model="sources"
+                                                        ></search-field>
+                                                    </v-col>
+                                                    <v-col cols="12" md="4">
+                                                        <v-combobox
+                                                                small-chips
+                                                                multiple
+                                                                label="{{ _('Tags') }}"
+                                                                v-model="refs"
+                                                                hint="{{ _('Type and enter free tags') }}"
+
+                                                        ></v-combobox>
+                                                    </v-col>
+                                                </v-row>
+
+                                                <v-row>
+                                                    <v-col cols="12" md="4">
+                                                        <v-switch v-model="optimize"
+                                                                  label="{{ _('Optimize videos') }}"></v-switch>
+                                                    </v-col>
+                                                    <v-col cols="12" md="4">
+                                                        <v-switch v-model="parse"
+                                                                  label="{{ _('Parse PDF & MS Word files') }}"></v-switch>
+                                                    </v-col>
+                                                    <v-col cols="12" md="4">
+                                                        <v-switch v-model="ocr"
+                                                                  :disabled="!ocrEnabled"
+                                                                  label="{{ _('Scan images for text') }}"></v-switch>
+                                                        <div v-if="!ocrEnabled">
+                                                            <v-icon left>mdi-information-outline</v-icon>
+                                                            {{ _('Tesseract OCR is disabled.') }}
+                                                        </div>
+                                                    </v-col>
+                                                    <v-col cols="12" md="4">
+                                                        <v-switch v-model="transcription"
+                                                                  :disabled="!transcriptionEnabled"
+                                                                  label="{{ _('Transcribe audio/video files') }}"></v-switch>
+                                                        <div v-if="!transcriptionEnabled">
+                                                            <v-icon left>mdi-information-outline</v-icon>
+                                                            {{ _('Transcription is disabled.') }}
+                                                        </div>
+                                                        <v-select
+                                                            v-if="transcription && transcriptionEnabled"
+                                                            v-model="transcriptionLanguage"
+                                                            :items="whisperLanguageOptions"
+                                                            label="{{ _('Language:') }}"
+                                                            item-title="title"
+                                                            item-value="value"
+                                                            class="mt-2"
+                                                        ></v-select>
+                                                    </v-col>
+                                                </v-row>
+                                            </v-card-text>
+
+                                        </v-card>
+
+                                    </v-stepper-window-item>
+
+                                    <v-stepper-window-item value="3">
+                                        <v-card class="pa-5">
+                                            <v-card-text>
+                                                ${ status }
+                                            </v-card-text>
+                                            
+                                            <v-btn 
+                                                v-if="batch_id" 
+                                                color="primary" 
+                                                dark 
+                                                class="ma-2"
+                                                :href="'/import/log/?batch_id='+batch_id">
+                                                    {{ _('Check Import Progress') }}
+                                            </v-btn>
+                                        </v-card>
+                                    </v-stepper-window-item>
+                                </v-stepper-window>
+                            </v-stepper>
+
+                            <v-dialog persistent v-model="selectDlg" max-width="900">
+                                <v-card :disabled="loading" :loading="loading" class="pa-3" v-if="selectDlg">
+                                    <v-card-title>
+                                        <v-spacer></v-spacer>
+                                        <v-btn fab text @click="selectDlg=false">
+                                            <v-icon>mdi-close</v-icon>
+                                        </v-btn>
+                                    </v-card-title>
+                                    <v-card-text class="align-center">
+                                        <v-text-field v-model="selectedPath"
+                                                      label="{{ _('Input a sub-path to scan, leave empty to scan the entire allowed path.') }}"></v-text-field>
+                                                      <v-card-text>
+                                                        <v-icon>mdi-information</v-icon>
+                                                        {{ _('To scan a sub-path of the allowed path, enter the sub-path only without any parents (e.g. \'videos\').') }}
+                                                      </v-card-text>
+                                        <v-switch v-model="recursive" label="{{ _('Search recursively') }}"></v-switch>
+                                    </v-card-text>
+
+                                    <v-card-actions class="pb-3">
+                                        <v-spacer></v-spacer>
+                                        <v-btn @click="selectDlg=false" class="mx-2" text>{{ _('Cancel') }}</v-btn>
+                                        <v-btn @click="processPath" class="mx-2" color="primary">{{ _('Scan') }}</v-btn>
+                                        <v-spacer></v-spacer>
+                                    </v-card-actions>
+                                </v-card>
+                            </v-dialog>
+
+
+                            <v-dialog persistent v-model="uploadDlg" max-width="900">
+                                <v-card class="" v-if="uploadDlg">
+                                    <v-toolbar>
+                                        <v-spacer></v-spacer>
+                                        <v-btn icon="mdi-close" @click="cancelAppend"></v-btn>
+                                    </v-toolbar>
+                                    <v-card-text class="align-center">
+
+
+                                        <vue-dropzone ref="dropzone" id="dropzone" class="ma-auto" :options="dzOpts"
+                                                      @vdropzone-removed-file="fileRemoved"
+                                                      @vdropzone-error="showError"
+                                                      @vdropzone-success="uploadSuccess"></vue-dropzone>
+
+
+                                    </v-card-text>
+                                    <v-card-actions class="pa-4">
+                                        <v-spacer></v-spacer>
+                                        <v-btn @click="cancelAppend" text>{{ _('Cancel') }}</v-btn>
+                                        <v-btn @click="appendFiles" variant="elevated" color="primary">{{ _('Add') }}</v-btn>
+                                        <v-spacer></v-spacer>
+                                    </v-card-actions>
+                                </v-card>
+
+                            </v-dialog>
+            </v-main>
+
+
+            <v-overlay v-model="loading">     </v-overlay>
+
+
+
+{% endblock %}
+{% block outside %}
+    <div class="d-none" data-allowed-media-types='.{{ ",.".join(config.ETL_VID_EXT) }}'></div>
+{% endblock %}
+{% block js %}
+    <script src="/static/js/videojs/video.min.js?v={{ config.VERSION }}"></script>
+
+
+    <script src="/static/js/dropzone/dropzone.min.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/VueDropzone.js?v={{ config.VERSION }}"></script>
+
+    <script src="/static/js/components/LabelPath.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/SearchField.js?v={{ config.VERSION }}" ></script>
+    <script src="/static/js/components/LabelSearchField.js?v={{ config.VERSION }}" ></script>
+    <script src="/static/js/mixins/whisper-mixin.js?v={{ config.VERSION }}" ></script>
+    <script src="/static/js/mixins/media-mixin.js?v={{ config.VERSION }}" ></script>
+
+
+
+
+
+
+
+    <script nonce="{{ csp_nonce() }}">
+        const {createApp} = Vue;
+        const {createVuetify} = Vuetify;
+        const vuetify = createVuetify(vuetifyConfig);
+
+        const app = createApp({
+            delimiters: delimiters,
+            mixins: [globalMixin, mediaMixin, whisperMixin],
+            
+            data: () => ({
+                ocrEnabled: ('{{ config.OCR_ENABLED }}' === 'True' && '{{ config.HAS_TESSERACT }}' === 'True'),
+                transcriptionEnabled: ('{{ config.TRANSCRIPTION_ENABLED }}' === 'True' && '{{ config.HAS_WHISPER }}' === 'True'),
+                etlPathImport: ('{{ config.ETL_PATH_IMPORT }}' === 'True'),
+                drawer: drawer,
+                mode: null,
+                loading: false,
+                status: '',
+                batch_id: '',
+
+                dzOpts: {
+                    // source=import goes in the URL so it survives every chunk POST.
+                    // Dropzone's `params` option is dropped on chunked requests.
+                    url: '/admin/api/media/chunk?source=import',
+                    // accept any file
+                    acceptedFiles: document.querySelector('[data-allowed-media-types]').dataset.allowedMediaTypes,
+                    addRemoveLinks: true,
+                    chunking: true,
+                    forceChunking: true,
+                    chunkSize: 500000, // Bytes
+                    thumbnailWidth: 80, // px
+                    thumbnailHeight: 80,
+                    parallelUploads: 1,
+                    maxFilesize: mediaUploadMaxFileSize,
+                },
+
+
+                selAllDisabled: true,
+
+                ploader: true,
+                step: 0,
+                uploadDlg: null,
+                selectDlg: null,
+                selectedPath: '',
+                recursive: false,
+                files: [],
+                options: {
+                    page: 1,
+                    itemsPerPage: 100
+                },
+
+                headers: [
+                    {title: "{{_('Original Filename')}}", value: 'name', sortable: false},
+                    {title: "{{_('New Filename')}}", value: 'filename', sortable: false},
+                    {title: "{{_('MD4')}}", value: 'etag', sortable: false},
+                ],
+                
+                //etl additional tags
+                labels: [],
+                verLabels: [],
+                sources: [],
+                locations: [],
+                refs: [],
+                roles: [],
+                items: [],
+                optimize: null,
+                parse: null,
+                ocr: null,
+                transcription: null,
+                transcriptionLanguage: null,
+                selectedItems: [],
+                itemsLength: 100,
+                editedIndex: -1,
+                editedItem: {
+                    title: ""
+                },
+                defaultItem: {
+                    title: "",
+                    active: false
+                }
+            }),
+
+            computed: {},
+
+
+            watch: {
+                items(val) {
+                    if (val.length) {
+                        this.selAllDisabled = false;
+                    } else {
+                        this.selAllDisabled = true;
+                    }
+
+                },
+
+
+                options: {
+                    handler: "refresh"
+                }
+            },
+
+            methods: {
+
+                showError(err, message) {
+                    this.showSnack(message);
+                },
+
+                fileRemoved(file, error, xhr) {
+                    if (!error) {
+                        // pop out that specific removed file
+                        this.files = this.files.filter(x =>
+                            x.uuid !== file.upload.uuid
+                        );
+                    }
+                },
+
+                uploadSuccess(dzfile) {
+                    // pick file from dropzone files list
+                    const file = findUploadedFileByUUID(this.$refs.dropzone.dz.getAcceptedFiles(), dzfile.upload.uuid);
+
+                    // parse the response in xhr
+                    this.files.push(file);
+
+
+                },
+
+
+                selectAll() {
+                    if (this.items.length) {
+                        this.selectedItems = this.items;
+                    }
+
+                },
+
+                clearAll() {
+                    this.selectedItems = [];
+                },
+                preprocess(files) {
+                    const etags = {};
+                    let id = 1;
+                    
+                    return files.reduce((acc, file) => {
+                        if (this.validFile(file.filename) && !etags[file.etag]) {
+                            etags[file.etag] = true;
+                            file.id = id++;
+                            acc.push(file);
+                        }
+                        return acc;
+                    }, []);
+                },
+
+                preprocessPath(files){
+                    files = files.filter(x => this.validFile(x.filename));
+                    for (let i = 0; i < files.length; i++){
+                        files[i].id = i + 1;
+                    }
+                    return files;
+                },
+
+                cancelAppend() {
+                    this.uploadDlg = false;
+                    this.files = [];
+                },
+
+                appendFiles() {
+                    // in dropzone files are already uploaded and filtered
+                    this.items = this.preprocess([...this.items, ...this.files]);
+                    this.uploadDlg = false;
+                    this.files = [];
+                    this.mode = 1;
+                },
+
+                processPath() {
+
+                    this.loading = true;
+
+                    api.post('/import/media/path/', {path: this.selectedPath, recursive: this.recursive}).then(res => {
+                        this.items = this.preprocessPath(res.data);
+                        this.mode = 2;
+
+                    }).finally(() => {
+                        this.selectDlg = false;
+                        this.loading = false;
+                    })
+                },
+
+                onFileUploaded(error, file) {
+
+                    //pass for now
+                },
+
+                refresh() {
+
+                },
+
+                validFile(filename) {
+                    const ext = ".".concat("", filename.split(".").pop().toLowerCase());
+                    if (this.dzOpts.acceptedFiles.includes(ext)) {
+                        return true;
+
+                    } else {
+                        return false;
+                    }
+
+
+                },
+
+                toStepOne() {
+                    this.step = "1";
+                },
+
+                toStepTwo() {
+                    this.step = "2";
+                },
+
+                processFiles() {
+
+                    this.step = "3";
+
+                    let files;
+                    if (this.mode == 1) {
+                        files = this.selectedItems.map(x => {
+                            x.name = x.filename;
+                            return x
+                        })
+
+                    } else {
+                        files = this.selectedItems;
+                    }
+                    let data = {
+                        files: files,
+                        labels: this.labels,
+                        ver_labels: this.verLabels,
+                        sources: this.sources,
+                        locations: this.locations,
+                        tags: this.refs,
+                        roles: this.roles,
+                        mode: this.mode,
+                        optimize: this.optimize,
+                        parse: this.parse,
+                        ocr: this.ocr,
+                        transcription: this.transcription,
+                        transcription_language: this.transcriptionLanguage
+                    }
+
+                    api.post('/import/media/process', data).then(res => {
+                        this.status = "{{ _('Files were added to queue successfully and will be imported in turn.') }}";
+                        this.batch_id = res.data.data;
+                    }).catch(err => {
+                        console.log(err.response.data);
+                        this.status = "{{ _('Error importing rows. Check logs for more information.') }}";
+                    }).finally(() => {
+
+                    });
+
+
+                },
+
+                selectPath() {
+                    if (this.etlPathImport) {
+                        this.selectDlg = true;
+                    }
+                },
+                uploadFiles() {
+
+                    this.uploadDlg = true;
+
+                }
+            }
+        });
+
+        app.component('VueDropzone', VueDropzone);
+        app.component('SearchField', SearchField);
+        app.component('LabelSearchField', LabelSearchField);
+        app.component('LocationSearchField', LocationSearchField);
+
+        app.use(router).use(vuetify);
+        router.isReady().then(() => {
+            app.mount('#app');
+            window.app = app;
+        });
+    </script>
+{% endblock %}

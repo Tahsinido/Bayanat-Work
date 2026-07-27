@@ -1,0 +1,79 @@
+{% extends "layout.html" %}
+{% from "security/_macros.html" import render_field_with_errors, render_field, render_field_errors %}
+
+{% block content %}
+    <v-main>
+    <v-container fluid>
+
+    <v-card>
+        <v-toolbar color="primary" title="{{ _fsdomain("Recovery Codes") }}"></v-toolbar>
+    <v-card-text>
+        {% include "security/_messages.html" %}
+    </v-card-text>
+        <v-card-text>
+            {% if recovery_codes %}
+                <v-list>
+                    {% for rc in recovery_codes %}
+                        <v-chip size="large" label
+                                class="mx-2 text-h6 border border-dashed">{{ rc }}</v-chip>
+                    {% endfor %}
+                </v-list>
+                <v-alert  density="compact" label color="success"  class="my-4">
+                    {{ _fsdomain("Be sure to copy these and store in a safe place. Each code can be used only once.") }}
+                </v-alert>
+
+                </v-card-text>
+
+
+
+            {% else %}
+                 <v-card-actions>
+                    <form action="{{ url_for_security("mf_recovery_codes") }}" method="GET"
+                          name="mf_recovery_codes_form">
+                        <input type="hidden" name="show_codes" value="Show Recovery Codes">
+                        <v-btn variant="elevated" name="show_codes" type="submit" color="primary" class="my-4">{{ _fsdomain('Show Recovery Codes')}}</v-btn>
+                    </form>
+                </v-card-actions>
+
+            {% endif %}
+    <v-divider class="my-4"></v-divider>
+    <v-card-title>{{ _fsdomain('Generate New Recovery Codes')}}</v-card-title>
+    <v-card-text>
+
+         <form action="{{ url_for_security("mf_recovery_codes") }}" method="POST"
+          name="mf_recovery_codes_form">
+        {{ mf_recovery_codes_form.hidden_tag() }}
+        {{ render_field_errors(mf_recovery_codes_form.csrf_token) }}
+        <v-btn color="primary" class="my-4" type="submit">{{ _fsdomain('Generate new recovery codes')}}</v-btn>
+    </form>
+
+
+    </v-card-text>
+    </v-card>
+    </v-container>
+</v-main>
+
+{% endblock %}
+
+{% block js %}
+    <script nonce="{{ csp_nonce() }}">
+        const {createApp} = Vue;
+        const {createVuetify} = Vuetify;
+
+        const vuetify = createVuetify(vuetifyConfig);
+
+        const app = createApp({
+            mixins: [globalMixin],
+            data() {
+                return {
+                    drawer: null,
+                    activeTab: null
+                };
+            },
+            delimiters: delimiters
+        });
+
+        app.use(vuetify).mount('#app');
+
+    </script>
+{% endblock %}
