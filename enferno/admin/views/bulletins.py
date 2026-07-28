@@ -129,10 +129,14 @@ def api_bulletins(validated_data: dict) -> Response:
 
     # Free-text terms drive the keyword-in-context snippet below. Only the
     # plain text search contributes; structured filters have nothing to quote.
+    # One phrase per filter, matching how bulletin_query builds the condition,
+    # so the highlighted text is exactly what caused the row to match.
     snippet_terms = []
     for filter_dict in q or []:
         if isinstance(filter_dict, dict):
-            snippet_terms += [w for w in (filter_dict.get("tsv") or "").split(" ") if w.strip()]
+            phrase = " ".join((filter_dict.get("tsv") or "").split())
+            if phrase:
+                snippet_terms.append(phrase)
 
     # Minimal serialization for list view with permission checks
     serialized_items = []

@@ -381,11 +381,16 @@ class SearchUtils:
         # Text search - PERFORMANCE OPTIMIZED
         # Searches both bulletin fields AND OCR extracted text from attached media
         if tsv := q.get("tsv"):
-            words = [w for w in tsv.split(" ") if w.strip()]
+            # The box is matched as one value, not as separate words: typing
+            # "Karabal Event" finds that phrase, and does NOT match a record
+            # that merely mentions "Karabal" and "Event" in different places.
+            # Collapse internal whitespace so stray double spaces still match.
+            phrase = " ".join(tsv.split())
+            words = [phrase] if phrase else []
             if words:
                 # Store for OCR match detection (used by get_ocr_matched_ids)
                 self.tsv_words = words
-                # Fast path: bulletin.search - individual ILIKEs enable GIN trigram index (200x faster)
+                # Fast path: bulletin.search - ILIKE enables the GIN trigram index
                 bulletin_conditions = [Bulletin.search.ilike(f"%{word}%") for word in words]
 
                 # Execute OCR query once and cache matching bulletin IDs
