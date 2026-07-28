@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1630 700" role="img" aria-label="Yazda">
+  <title>Yazda</title>
+  <!-- Sun: disc plus twelve rays, partly hidden behind the peaks. -->
+  <g fill="#F7DE55">
+    <circle cx="818" cy="268" r="205"/>
+    <polygon points="818.0,-62.0 789.8,53.8 846.2,53.8"/>
+    <polygon points="983.0,-17.8 900.7,68.4 949.5,96.6"/>
+    <polygon points="1103.8,103.0 989.4,136.5 1017.6,185.3"/>
+    <polygon points="1148.0,268.0 1032.2,239.8 1032.2,296.2"/>
+    <polygon points="1103.8,433.0 1017.6,350.7 989.4,399.5"/>
+    <polygon points="983.0,553.8 949.5,439.4 900.7,467.6"/>
+    <polygon points="818.0,598.0 846.2,482.2 789.8,482.2"/>
+    <polygon points="653.0,553.8 735.3,467.6 686.5,439.4"/>
+    <polygon points="532.2,433.0 646.6,399.5 618.4,350.7"/>
+    <polygon points="488.0,268.0 603.8,296.2 603.8,239.8"/>
+    <polygon points="532.2,103.0 618.4,185.3 646.6,136.5"/>
+    <polygon points="653.0,-17.8 686.5,96.6 735.3,68.4"/>
+  </g>
+  <!-- Three peaks, front to back left-to-right. -->
+  <polygon fill="#F5A623" points="10,458 358,295 665,690 190,690"/>
+  <polygon fill="#16171F" points="490,458 835,295 1150,690 665,690"/>
+  <polygon fill="#D0102A" points="975,458 1315,295 1630,690 1150,690"/>
+</svg>
