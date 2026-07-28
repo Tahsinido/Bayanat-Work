@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import os
+
 import pandas as pd
 from urllib.parse import urlparse
 from flask import Flask, render_template, current_app, request
@@ -105,6 +107,7 @@ def create_app(config_object=Config):
             )
 
     register_constants(app)
+    register_branding(app)
     register_blueprints(app)
     register_extensions(app)
     register_shellcontext(app)
@@ -471,3 +474,32 @@ def handle_uncaught_exception(e):
 
 def register_constants(app):
     app.config["CONSTANTS"] = Constants
+
+
+# Deployments drop their own logo here; the templates fall back to the
+# wordmark when it is absent, so a missing file never shows a broken image.
+ORG_LOGO_CANDIDATES = (
+    "img/yazda-logo.png",
+    "img/yazda-logo.svg",
+    "img/yazda-logo.jpg",
+)
+
+
+def register_branding(app):
+    """Expose `org_logo` to every template, or None when no logo is installed.
+
+    Resolved once at startup rather than per request: the file does not change
+    while the app is running, and templates render on every page load.
+    """
+    org_logo = None
+    for candidate in ORG_LOGO_CANDIDATES:
+        if os.path.exists(os.path.join(app.static_folder, candidate)):
+            org_logo = f"/static/{candidate}"
+            break
+
+    if org_logo:
+        app.logger.info(f"Organisation logo: {org_logo}")
+
+    @app.context_processor
+    def inject_branding():
+        return {"org_logo": org_logo}

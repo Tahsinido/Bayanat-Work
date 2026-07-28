@@ -1,0 +1,299 @@
+{% extends 'layout.html' %} {% block content %}
+{# Snippet styling lives in static/css/app.css, shared with Field Data and Bulletins. #}
+
+<v-main>
+    <v-container fluid>
+        <v-card>
+            <v-card-title>
+                <div class="flex-grow-1"></div>
+            </v-card-title>
+
+            <v-card-text>
+                <v-data-table-server
+                        height="calc(100vh - 260px)"
+                        fixed-header
+                        :headers="headers"
+                        :items="items"
+                        @update:options="refresh"
+                        :page="options.page"
+                        :loading="loading"
+                        :items-length="itemsLength"
+                        class="elevation-1"
+                >
+                    <template v-slot:top>
+                        <v-toolbar flat color="white">
+                            <v-toolbar-title>{{ _('Missing Persons') }}</v-toolbar-title>
+
+                            <v-text-field
+                                    variant="outlined"
+                                    class="mt-6"
+                                    density="compact"
+                                    clearable
+                                    @click:clear="resetSearch"
+                                    v-model="q"
+                                    label="{{ _('Search') }}"
+                                    @keydown.enter="refresh()"
+                            ></v-text-field>
+
+                            <v-spacer></v-spacer>
+
+                            {% if current_user.roles_in(['Admin','Mod','DA']) %}
+                            <v-btn color="primary" variant="elevated" class="ma-2" @click="newItem">
+                                {{ _('New Item') }}
+                            </v-btn>
+                            {% endif %}
+
+                            <v-dialog v-model="dialog" max-width="820px" scrollable>
+                                <v-card :title="formTitle">
+                                    <v-card-text style="max-height: 70vh">
+                                        <v-container>
+                                            <v-row>
+                                                <v-col cols="12" md="7">
+                                                    <v-text-field
+                                                            v-model="editedItem.name"
+                                                            :error-messages="nameError"
+                                                            label="{{ _('Missing Person Name') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                                <v-col cols="12" md="5">
+                                                    <v-text-field
+                                                            v-model="editedItem.interview_code"
+                                                            label="{{ _('Related Interview (code)') }}"
+                                                            hint="{{ _('Code of the interview this report came from') }}"
+                                                            persistent-hint
+                                                            prepend-inner-icon="mdi-pound"
+                                                    ></v-text-field>
+                                                </v-col>
+                                            </v-row>
+
+                                            <v-row>
+                                                <v-col cols="12" md="7">
+                                                    <v-text-field
+                                                            v-model="editedItem.family_member_name"
+                                                            label="{{ _('Name of Family member') }}"
+                                                    ></v-text-field>
+                                                </v-col>
+                                                <v-col cols="12" md="5">
+                                                    <v-text-field
+                                                            v-model="editedItem.family_phone"
+                                                            label="{{ _('Phone number for family') }}"
+                                                            prepend-inner-icon="mdi-phone"
+                                                    ></v-text-field>
+                                                </v-col>
+                                            </v-row>
+
+                                            <v-row>
+                                                <v-col cols="12">
+                                                    <v-textarea
+                                                            v-model="editedItem.note"
+                                                            label="{{ _('Note') }}"
+                                                            rows="4"
+                                                            auto-grow
+                                                            hint="{{ _('Searchable, with surrounding lines shown in results') }}"
+                                                            persistent-hint
+                                                    ></v-textarea>
+                                                </v-col>
+                                            </v-row>
+
+                                            <v-alert
+                                                    v-if="editedItem.modified_last_by"
+                                                    type="info" variant="tonal" density="compact" class="mt-2"
+                                            >
+                                                {{ _('Last modified by') }} ${editedItem.modified_last_by}
+                                                {{ _('on') }} ${editedItem.modified_last_date}
+                                            </v-alert>
+                                        </v-container>
+                                    </v-card-text>
+
+                                    <v-card-actions>
+                                        <v-spacer></v-spacer>
+                                        <v-btn color="blue darken-1" text @click="close">{{ _('Cancel') }}</v-btn>
+                                        <v-btn color="blue darken-1" text @click="save">{{ _('Save') }}</v-btn>
+                                    </v-card-actions>
+                                </v-card>
+                            </v-dialog>
+                        </v-toolbar>
+                    </template>
+
+                    <template #['item.snippet']="{ item }">
+                        <div v-if="item.snippet" class="py-2 snippet-cell">
+                            <div class="text-caption text-medium-emphasis font-weight-medium">
+                                ${item.snippet.field}
+                                <span class="text-disabled">({{ _('line') }} ${item.snippet.line_number})</span>
+                            </div>
+                            <div v-for="(l, i) in item.snippet.before" :key="'b'+i"
+                                 class="text-caption text-disabled snippet-line">${l}</div>
+                            <div class="text-body-2 snippet-line"><span>${item.snippet.line_before}</span><mark
+                                    class="snippet-mark">${item.snippet.match}</mark><span>${item.snippet.line_after}</span></div>
+                            <div v-for="(l, i) in item.snippet.after" :key="'a'+i"
+                                 class="text-caption text-disabled snippet-line">${l}</div>
+                        </div>
+                        <span v-else class="text-disabled text-caption">&mdash;</span>
+                    </template>
+
+                    <template v-slot:item.action="{ item }">
+                        {% if current_user.roles_in(['Admin','Mod','DA']) %}
+                        <v-icon small @click="editItem(item)">mdi-pencil</v-icon>
+                        {% endif %}
+                    </template>
+
+                    <template v-slot:no-data></template>
+                </v-data-table-server>
+            </v-card-text>
+        </v-card>
+    </v-container>
+</v-main>
+
+{% endblock %} {% block js %}
+<script nonce="{{ csp_nonce() }}">
+
+    const {createApp} = Vue;
+    const {createVuetify} = Vuetify;
+    const vuetify = createVuetify(vuetifyConfig);
+
+    const MP_DEFAULT = {
+        name: "",
+        interview_code: "",
+        family_member_name: "",
+        family_phone: "",
+        note: ""
+    };
+
+    const app = createApp({
+        delimiters: delimiters,
+        mixins: [globalMixin],
+
+        data: () => ({
+            dialog: dialog,
+            drawer: drawer,
+            loading: true,
+            options: {},
+            q: '',
+            nameError: [],
+            searchActive: false,
+            items: [],
+            itemsLength: 0,
+            editedIndex: -1,
+            editedItem: Object.assign({}, MP_DEFAULT)
+        }),
+
+        computed: {
+            formTitle() {
+                return this.editedIndex === -1 ? "{{ _('New Item') }}" : "{{ _('Edit Item') }}";
+            },
+            headers() {
+                const cols = [
+                    {title: "{{ _('ID') }}", value: "id", width: 80},
+                    {title: "{{ _('Missing Person Name') }}", value: "name"},
+                    {title: "{{ _('Related Interview') }}", value: "interview_code"},
+                    {title: "{{ _('Name of Family member') }}", value: "family_member_name"},
+                    {title: "{{ _('Phone number for family') }}", value: "family_phone"}
+                ];
+                if (this.searchActive) {
+                    cols.push({title: "{{ _('Match') }}", value: "snippet", sortable: false, width: 420});
+                }
+                {% if current_user.roles_in(['Admin','Mod','DA']) %}
+                cols.push({title: "{{ _('Actions') }}", value: "action", sortable: false, width: 90});
+                {% endif %}
+                return cols;
+            }
+        },
+
+        watch: {
+            dialog(val) {
+                val || this.close();
+            }
+        },
+
+        methods: {
+            refresh(options) {
+                this.options = options || {...this.options, page: 1};
+                this.loading = true;
+
+                const sort = (this.options.sortBy && this.options.sortBy.length)
+                    ? this.options.sortBy[0] : null;
+
+                const params = new URLSearchParams({
+                    page: this.options.page || 1,
+                    per_page: this.options.itemsPerPage || 30,
+                    q: this.q || ''
+                });
+                if (sort) {
+                    params.append('sort_by', sort.key);
+                    params.append('sort_desc', sort.order === 'desc');
+                }
+
+                api.get(`/admin/api/missing-persons/?${params.toString()}`).then(response => {
+                    this.itemsLength = response.data.total;
+                    this.items = response.data.items;
+                    this.searchActive = Boolean((this.q || '').trim());
+                }).finally(() => {
+                    this.loading = false;
+                });
+            },
+
+            resetSearch() {
+                this.q = '';
+                this.refresh();
+            },
+
+            newItem() {
+                this.editedIndex = -1;
+                this.nameError = [];
+                this.editedItem = Object.assign({}, MP_DEFAULT);
+                this.dialog = true;
+            },
+
+            editItem(item) {
+                this.editedIndex = this.items.indexOf(item);
+                this.nameError = [];
+                this.editedItem = Object.assign({}, MP_DEFAULT, item);
+                this.dialog = true;
+            },
+
+            close() {
+                this.dialog = false;
+                setTimeout(() => {
+                    this.editedItem = Object.assign({}, MP_DEFAULT);
+                    this.editedIndex = -1;
+                    this.nameError = [];
+                }, 300);
+            },
+
+            save() {
+                if (!this.editedItem.name || !this.editedItem.name.trim()) {
+                    this.nameError = ["{{ _('Missing Person Name is required') }}"];
+                    return;
+                }
+                this.nameError = [];
+
+                const payload = {};
+                Object.keys(MP_DEFAULT).forEach(k => payload[k] = this.editedItem[k]);
+
+                if (this.editedIndex > -1) {
+                    payload.id = this.editedItem.id;
+                    api.put(`/admin/api/missing-persons/${this.editedItem.id}`, {item: payload})
+                        .then(response => {
+                            this.showSnack(response.data);
+                            this.refresh();
+                            this.close();
+                        });
+                } else {
+                    api.post('/admin/api/missing-persons/', {item: payload})
+                        .then(response => {
+                            this.showSnack(response.data);
+                            this.refresh();
+                            this.close();
+                        });
+                }
+            }
+        }
+    });
+
+    app.use(router).use(vuetify);
+    router.isReady().then(() => {
+        app.mount('#app');
+        window.app = app;
+    });
+</script>
+{% endblock %}

@@ -214,3 +214,13 @@ incident_roles = db.Table(
     db.Index("ix_incident_roles_incident_id", "incident_id"),
     extend_existing=True,
 )
+
+# joint table
+field_data_locations = db.Table(
+    "field_data_locations",
+    db.Column("location_id", db.Integer, db.ForeignKey("location.id"), primary_key=True),
+    db.Column("field_data_id", db.Integer, db.ForeignKey("field_data.id"), primary_key=True),
+    db.Index("ix_field_data_locations_location_id", "location_id"),
+    db.Index("ix_field_data_locations_field_data_id", "field_data_id"),
+    extend_existing=True,
+)

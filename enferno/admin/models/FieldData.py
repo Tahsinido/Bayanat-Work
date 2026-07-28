@@ -6,6 +6,7 @@ import arrow
 from sqlalchemy import ARRAY
 
 from enferno.extensions import db
+from enferno.admin.models.tables import field_data_locations
 from enferno.utils.base import BaseMixin
 from enferno.utils.date_helper import DateHelper
 from enferno.utils.logging_utils import get_logger
@@ -127,6 +128,13 @@ class FieldData(db.Model, BaseMixin):
         cascade="all, delete-orphan",
     )
 
+    # The shared Location entity, same as Bulletin uses.
+    locations = db.relationship(
+        "Location",
+        secondary=field_data_locations,
+        backref=db.backref("field_data_records", lazy="dynamic"),
+    )
+
     # How many separate times this site has been documented.
     times_documented = db.Column(db.Integer)
 
@@ -164,6 +172,12 @@ class FieldData(db.Model, BaseMixin):
         if "external_link" in json:
             value = json.get("external_link")
             self.external_link = value.strip() if isinstance(value, str) else value
+
+        if "locations" in json:
+            from enferno.admin.models.Location import Location
+
+            ids = [loc["id"] for loc in (json.get("locations") or []) if loc.get("id")]
+            self.locations = Location.query.filter(Location.id.in_(ids)).all() if ids else []
 
         if "times_documented" in json:
             value = json.get("times_documented")
@@ -328,6 +342,7 @@ class FieldData(db.Model, BaseMixin):
         data["description"] = self.description
         data["external_link"] = self.external_link
         data["sites"] = [site.to_dict() for site in self.sites]
+        data["locations"] = [loc.to_compact() for loc in self.locations]
         data["times_documented"] = self.times_documented
         data["has_interview"] = bool(self.has_interview)
         data["interview_names"] = self.interview_names or []

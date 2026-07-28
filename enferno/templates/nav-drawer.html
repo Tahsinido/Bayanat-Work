@@ -12,6 +12,9 @@
         {% if current_user.has_role('Admin') or current_user.has_role('Mod') or current_user.has_role('DA') %}
             <v-list-item prepend-icon="mdi-clipboard-text-search" title="{{ _('Field Data') }}"
                          href="/admin/field-data/" key="field-data"></v-list-item>
+
+            <v-list-item prepend-icon="mdi-account-search" title="{{ _('Missing Persons') }}"
+                         href="/admin/missing-persons/" key="missing-persons"></v-list-item>
         {% endif %}
 
         {% if current_user.has_role("Admin") or current_user.can_access_media %}

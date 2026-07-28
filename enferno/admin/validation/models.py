@@ -247,6 +247,9 @@ class BulletinValidationModel(StrictValidationModel):
     first_peer_reviewer: Optional[PartialUserModel] = None
     description: Optional[SanitizedField] = None
     public_description: Optional[SanitizedField] = None
+    # Declared rather than left to extra="allow": validate_dynamic_fields
+    # rejects any extra that is not a registered dynamic field.
+    external_link: Optional[str] = Field(default=None, max_length=2048)
     comments: str = Field(min_length=1)
     source_link: str = Field(min_length=1)
     source_link_type: Optional[bool] = None
@@ -893,6 +896,25 @@ class SourceRequestModel(BaseValidationModel):
     item: SourceValidationModel
 
 
+class MissingPersonValidationModel(StrictValidationModel):
+    name: str = Field(min_length=1, max_length=255)
+    interview_code: Optional[str] = DEFAULT_STRING_FIELD
+    family_member_name: Optional[str] = DEFAULT_STRING_FIELD
+    family_phone: Optional[str] = Field(default=None, max_length=64)
+    note: Optional[str] = None
+    # Echoed back by the front-end on PUT; ignored by from_json.
+    id: Optional[int] = None
+    updated_at: Optional[str] = None
+    # Server-maintained, accepted but never trusted from the client.
+    created_by: Optional[str] = None
+    modified_last_by: Optional[str] = None
+    modified_last_date: Optional[str] = None
+
+
+class MissingPersonRequestModel(BaseValidationModel):
+    item: MissingPersonValidationModel
+
+
 class FieldDataSiteValidationModel(StrictValidationModel):
     id: Optional[int] = None
     sort_order: Optional[int] = None
@@ -961,6 +983,7 @@ class FieldDataValidationModel(StrictValidationModel):
     description: Optional[str] = None
     external_link: Optional[str] = Field(default=None, max_length=2048)
     sites: Optional[List[FieldDataSiteValidationModel]] = None
+    locations: Optional[List[PartialLocationModel]] = None
     times_documented: Optional[int] = Field(default=None, ge=0)
     has_interview: Optional[bool] = False
     interview_names: Optional[List[str]] = None

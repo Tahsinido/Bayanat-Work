@@ -2,7 +2,15 @@
 
 <v-main class="d-flex flex-column align-center justify-center bg-background">
   <v-card class="mx-auto pa-8 w-100" rounded="lg" style="max-width: 424px">
-    <v-card-title class="text-h4 text-center font-weight-bold px-0 pb-0">{{ _('Welcome to Bayanat') }}</v-card-title>
+    {# Shows as soon as a logo is dropped at static/img/yazda-logo.png;
+       until then the wordmark below stands on its own. #}
+    {% if org_logo %}
+      <div class="text-center pt-4 pb-2">
+        <img src="{{ org_logo }}?v={{ config.VERSION }}" alt="{{ _('Yazda') }}"
+             style="max-height: 96px; max-width: 100%;"/>
+      </div>
+    {% endif %}
+    <v-card-title class="text-h4 text-center font-weight-bold px-0 pb-0 text-wrap">{{ _('Yazda Documentation Database') }}</v-card-title>
     <v-card-subtitle class="text-subtitle-2 text-pre-wrap text-center px-0 pb-4"
       >{{ _('Please enter your details below to log in.') }}</v-card-subtitle
     >

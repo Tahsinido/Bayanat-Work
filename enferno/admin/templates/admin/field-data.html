@@ -22,6 +22,10 @@
                 >
                     <template v-slot:top>
                         <v-toolbar flat color="white">
+                            {% if org_logo %}
+                                <img src="{{ org_logo }}?v={{ config.VERSION }}" alt="{{ _('Yazda') }}"
+                                     class="ml-2 mr-3" style="max-height: 36px;"/>
+                            {% endif %}
                             <v-toolbar-title>{{ _('All Locations') }}</v-toolbar-title>
 
                             <v-text-field
@@ -96,6 +100,19 @@
                                                             min="0"
                                                             label="{{ _('No of Site') }}"
                                                     ></v-text-field>
+                                                </v-col>
+                                            </v-row>
+
+                                            <v-row>
+                                                <v-col cols="12">
+                                                    <location-search-field
+                                                            v-model="editedItem.locations"
+                                                            api="/admin/api/locations/"
+                                                            item-title="full_string"
+                                                            item-value="id"
+                                                            :multiple="true"
+                                                            label="{{ _('Locations') }}"
+                                                    ></location-search-field>
                                                 </v-col>
                                             </v-row>
 
@@ -673,6 +690,8 @@
 <script src="/static/js/tinymce-vue.min.js?v={{ config.VERSION }}"></script>
 
 <!-- Same media stack Bulletins use, so previews/viewers behave identically. -->
+<script src="/static/js/common/local-path.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/SearchField.js?v={{ config.VERSION }}"></script>
 <script src="/static/js/components/UniField.js?v={{ config.VERSION }}"></script>
 <script src="/static/js/components/MediaGrid.js?v={{ config.VERSION }}"></script>
 <script src="/static/js/components/MediaCard.js?v={{ config.VERSION }}"></script>
@@ -716,7 +735,8 @@
         has_interview: false,
         interview_names: [],
         medias: [],
-        sites: []
+        sites: [],
+        locations: []
     };
 
     const SITE_DEFAULT = {
@@ -750,7 +770,7 @@
 
     const app = createApp({
         delimiters: delimiters,
-        mixins: [globalMixin],
+        mixins: [globalMixin, localPathMixin],
 
         data: () => ({
             dialog: dialog,
@@ -885,6 +905,7 @@
                         data_types: [...(full.data_types || [])],
                         interview_names: [...(full.interview_names || [])],
                         medias: [...(full.medias || [])],
+                        locations: [...(full.locations || [])],
                         sites: (full.sites || []).map(s => Object.assign({}, SITE_DEFAULT, s, {
                             data_types: [...(s.data_types || [])],
                             interview_names: [...(s.interview_names || [])],
@@ -898,7 +919,7 @@
 
             blankItem() {
                 return Object.assign({}, FIELD_DATA_DEFAULT, {
-                    data_types: [], interview_names: [], medias: [], sites: []
+                    data_types: [], interview_names: [], medias: [], sites: [], locations: []
                 });
             },
 
@@ -918,47 +939,6 @@
                 this.editedItem.sites.splice(index, 1);
                 this.siteErrors = {};
                 this.openSitePanel = null;
-            },
-
-            isWebLink(link) {
-                return /^https?:\/\//i.test((link || '').trim());
-            },
-
-            // D:\... , \\server\share\... or a bare folder path.
-            isLocalPath(link) {
-                const v = (link || '').trim();
-                return /^[a-zA-Z]:[\\/]/.test(v) || /^\\\\/.test(v);
-            },
-
-            // Browsers refuse to navigate from http:// to file://, so a local
-            // path is handed to the bayanat-open: protocol handler instead
-            // (tools/windows-open-handler). If that is not installed the
-            // navigation is simply ignored, so the path is copied too and the
-            // message says so -- the operator is never left with nothing.
-            openLink(link) {
-                if (!link) return;
-                const value = link.trim();
-
-                if (this.isWebLink(value)) {
-                    window.open(value, '_blank', 'noopener');
-                    return;
-                }
-
-                if (this.isLocalPath(value)) {
-                    window.location.href = 'bayanat-open:' + encodeURIComponent(value);
-                    this.copyLink(value, "{{ _('Opening in Explorer. If nothing happens the helper is not installed - the path has been copied instead.') }}");
-                    return;
-                }
-
-                this.copyLink(value, "{{ _('Path copied. Paste it into your file explorer.') }}");
-            },
-
-            copyLink(link, message) {
-                if (!link) return;
-                const note = message || "{{ _('Link copied') }}";
-                navigator.clipboard.writeText(link)
-                    .then(() => this.showSnack(note))
-                    .catch(() => this.showSnack("{{ _('Could not copy link') }}"));
             },
 
             resetForm() {
@@ -1130,6 +1110,8 @@
                             if (out.id === null) delete out.id;
                             return out;
                         });
+                    } else if (key === 'locations') {
+                        value = (value || []).map(l => ({id: l.id}));
                     } else if (key === 'medias') {
                         // Send only what the API validates; to_dict returns extras.
                         value = (value || []).map(m => ({
@@ -1188,6 +1170,7 @@
     });
 
     app.component('TinymceEditor', Editor);
+    app.component('LocationSearchField', LocationSearchField);
     app.component('UniField', UniField);
     app.component('MediaGrid', MediaGrid);
     app.component('MediaCard', MediaCard);

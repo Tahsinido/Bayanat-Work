@@ -183,6 +183,26 @@
                                             v-model="editedItem.status" label="{{ _('Status') }}"></v-select>
                                     </div>
                                 </template>
+                                {% if current_user.has_role("Admin") %}
+                                <div class="grid-col-span-2 px-3 py-2">
+                                    <div class="text-subtitle-2 mb-2">{{ _('Data folder') }}</div>
+                                    <div class="d-flex ga-2 align-start">
+                                        <v-text-field
+                                            v-model="editedItem.external_link"
+                                            label="{{ _('Path to the folder holding this bulletin data') }}"
+                                            placeholder="D:\Projects\VR\Karabal Event.16.17.04.2025"
+                                            hint="{{ _('Local folder, network share or https URL. Opening a local folder needs the one-time Windows helper (tools/windows-open-handler).') }}"
+                                            persistent-hint
+                                            prepend-inner-icon="mdi-folder-network"
+                                        ></v-text-field>
+                                        <v-btn class="mt-2" variant="tonal" :disabled="!editedItem.external_link"
+                                            @click="openLink(editedItem.external_link)">{{ _('Open') }}</v-btn>
+                                        <v-btn class="mt-2" variant="text" icon="mdi-content-copy"
+                                            :disabled="!editedItem.external_link"
+                                            @click="copyLink(editedItem.external_link)"></v-btn>
+                                    </div>
+                                </div>
+                                {% endif %}
                                 {% if config.AC_USERS_CAN_RESTRICT_NEW or current_user.has_role("Admin") %}
                                 <div class="grid-col-span-1 px-3 py-2" v-if="!editedItem.id">
                                     <v-select :color="editedItem.roles?.length ? 'blue darken-1' : 'error'"

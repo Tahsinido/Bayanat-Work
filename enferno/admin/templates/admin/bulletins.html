@@ -404,6 +404,7 @@
     <script src="/static/js/components/UniField.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/DualField.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/LabelPath.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/common/local-path.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/SearchField.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/LabelSearchField.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/SplitView.js?v={{ config.VERSION }}"></script>
@@ -494,7 +495,7 @@
         const app = createApp({
                 delimiters: delimiters,
 
-                mixins: [mediaMixin, globalMixin, relationsMixin, formBuilderMixin, ocrMixin],
+                mixins: [mediaMixin, globalMixin, relationsMixin, formBuilderMixin, ocrMixin, localPathMixin],
 
                 data: () => ({
                     itemsPerPageOptions: window.itemsPerPageOptions,
@@ -687,6 +688,7 @@
                     editedItem: {
                         title: "",
                         public_description: "",
+                        external_link: "",
                         events: [],
                         medias: [],
                         bulletin_relations: [],
@@ -697,6 +699,7 @@
                         title: "",
                         description: "",
                         public_description: "",
+                        external_link: "",
 
                         // related events
                         events: [],

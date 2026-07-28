@@ -186,3 +186,4 @@ from . import notifications  # noqa: E402, F401
 from . import dynamic_fields  # noqa: E402, F401
 from . import flowmap  # noqa: E402, F401
 from . import field_data  # noqa: E402, F401
+from . import missing_persons  # noqa: E402, F401

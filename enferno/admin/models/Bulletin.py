@@ -63,6 +63,10 @@ class Bulletin(db.Model, BaseMixin):
     description = db.Column(db.Text)
     public_description = db.Column(db.Text)
 
+    # Folder holding this bulletin's bulk data outside Bayanat (local path,
+    # network share or URL). Stored verbatim; opening it is the browser's job.
+    external_link = db.Column(db.String)
+
     reliability_score = db.Column(db.Integer, default=0)
 
     first_peer_reviewer_id = db.Column(db.Integer, db.ForeignKey("user.id"), index=True)
@@ -315,6 +319,9 @@ class Bulletin(db.Model, BaseMixin):
         self.public_description = (
             json["public_description"] if "public_description" in json else None
         )
+        if "external_link" in json:
+            value = json.get("external_link")
+            self.external_link = value.strip() if isinstance(value, str) else value
         self.comments = json["comments"] if "comments" in json else None
         self.source_link = json["source_link"] if "source_link" in json else None
         self.source_link_type = json.get("source_link_type", False)
@@ -498,6 +505,7 @@ class Bulletin(db.Model, BaseMixin):
             "locations": locations_json,
             "sources": sources_json,
             "description": self.description or None,
+            "external_link": self.external_link or None,
             "public_description": self.public_description or None,
             "source_link": self.source_link or None,
             "source_link_type": getattr(self, "source_link_type", False),
@@ -788,6 +796,7 @@ class Bulletin(db.Model, BaseMixin):
                 "actor_relations": actor_relations_dict,
                 "incident_relations": incident_relations_dict,
                 "description": self.description or None,
+            "external_link": self.external_link or None,
                 "public_description": self.public_description or None,
                 "comments": self.comments or None,
                 "source_link": self.source_link or None,
@@ -842,6 +851,7 @@ class Bulletin(db.Model, BaseMixin):
             "locations": locations_json,
             "sources": sources_json,
             "description": self.description or None,
+            "external_link": self.external_link or None,
             "public_description": self.public_description or None,
             "comments": self.comments or None,
             "source_link": self.source_link or None,

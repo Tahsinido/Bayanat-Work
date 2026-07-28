@@ -23,6 +23,7 @@ from .Eventtype import Eventtype
 from .Extraction import Extraction
 from .FieldData import FieldData
 from .FieldDataSite import FieldDataSite
+from .MissingPerson import MissingPerson
 from .GeoLocation import GeoLocation
 from .GeoLocationType import GeoLocationType
 from .Incident import Incident
