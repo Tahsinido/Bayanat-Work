@@ -344,6 +344,21 @@ def api_medias_upload() -> Response:
         )
         return HTTPResponse.error("This file type is not allowed", status=415)
 
+    # Enforce the configured size limit here too (config value is in MB). The
+    # chunked endpoint already did this, but a direct upload did not, so an
+    # oversized file was only stopped by the proxy -- as an HTML 413 with no
+    # usable message.
+    max_size_mb = current_app.config.get("MEDIA_UPLOAD_MAX_FILE_SIZE", 1000)
+    file.seek(0, os.SEEK_END)
+    size_bytes = file.tell()
+    file.seek(0)
+    if size_bytes > max_size_mb * 1024 * 1024:
+        return HTTPResponse.error(
+            f"File is {size_bytes / 1024 / 1024:.1f} MB, which exceeds the "
+            f"maximum allowed size of {max_size_mb} MB",
+            status=413,
+        )
+
     if current_app.config["FILESYSTEM_LOCAL"]:
         file = request.files.get("file")
         # final file

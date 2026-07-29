@@ -4,7 +4,7 @@ import os
 
 import pandas as pd
 from urllib.parse import urlparse
-from flask import Flask, render_template, current_app, request
+from flask import Flask, render_template, current_app, jsonify, request
 from flask_login import user_logged_in, user_logged_out
 from flask_security import Security, SQLAlchemyUserDatastore
 from flask_security import current_user
@@ -436,6 +436,25 @@ def register_errorhandlers(app):
 
     for errcode in [401, 404, 500]:
         app.errorhandler(errcode)(render_error)
+
+    @app.errorhandler(413)
+    def request_entity_too_large(error):
+        """Answer oversized uploads in JSON.
+
+        The default is an HTML page, which the upload UI cannot read, so the
+        operator only ever saw a bare "upload failed".
+        """
+        limit = app.config.get("MEDIA_UPLOAD_MAX_FILE_SIZE", 1000)
+        return (
+            jsonify(
+                message=(
+                    f"File is too large. The maximum upload size is {limit} MB. "
+                    "If the file is smaller than that, the web server in front "
+                    "of Bayanat is imposing a lower limit (client_max_body_size)."
+                )
+            ),
+            413,
+        )
 
     app.errorhandler(429)(ratelimit_handler)
 
