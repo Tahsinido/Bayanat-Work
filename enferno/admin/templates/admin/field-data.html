@@ -2,6 +2,36 @@
 {# Snippet styling lives in static/css/app.css, shared with Bulletin results. #}
 
 <v-main>
+    <!-- Media opens here, filling the window. The old inline strip was only a
+         few hundred pixels tall, so PDFs and Word files showed a sliver. -->
+    <v-dialog v-model="viewerDialog" fullscreen :scrim="false" transition="dialog-bottom-transition">
+        <v-card v-if="viewerMedia" class="d-flex flex-column" style="height: 100vh;">
+            <v-toolbar density="compact" color="primary">
+                <v-toolbar-title class="text-truncate">
+                    ${viewerMedia.media?.title || viewerMedia.media?.filename}
+                </v-toolbar-title>
+                <v-spacer></v-spacer>
+                <v-btn v-if="viewerMedia.media?.filename"
+                       icon="mdi-download"
+                       :href="`/admin/api/serve/media/${viewerMedia.media.filename}`"
+                       target="_blank" rel="noopener"></v-btn>
+                <v-btn icon="mdi-close" @click="closeViewer"></v-btn>
+            </v-toolbar>
+            <inline-media-renderer
+                    renderer-id="field-data-viewer"
+                    :media="viewerMedia.media"
+                    :media-type="viewerMedia.mediaType"
+                    :initial-orientation="viewerMedia.media?.orientation || 0"
+                    :use-metadata="true"
+                    hide-close
+                    class="flex-grow-1"
+                    content-style="height: calc(100vh - 112px);"
+                    @ready="onViewerReady"
+                    @fullscreen="requestViewerFullscreen"
+            ></inline-media-renderer>
+        </v-card>
+    </v-dialog>
+
     <v-container fluid>
         <v-card>
             <v-card-title>
@@ -369,25 +399,11 @@
                                                                  density="compact" class="mb-2">${err}
                                                         </v-alert>
 
-                                                        <inline-media-renderer
-                                                                v-if="expandedSiteMedia[si]"
-                                                                :renderer-id="'field-data-site-' + si"
-                                                                :media="expandedSiteMedia[si].media"
-                                                                :media-type="expandedSiteMedia[si].mediaType"
-                                                                :initial-orientation="expandedSiteMedia[si].media?.orientation || 0"
-                                                                :use-metadata="true"
-                                                                class="mb-4"
-                                                                content-style="height: calc(100vh - 560px);"
-                                                                @close="closeSiteMedia(si)"
-                                                        ></inline-media-renderer>
-
                                                         <media-grid
                                                                 v-if="site.medias && site.medias.length"
                                                                 :medias="site.medias"
-                                                                :horizontal="Boolean(expandedSiteMedia[si])"
-                                                                :mini-mode="Boolean(expandedSiteMedia[si])"
                                                                 enable-delete
-                                                                @media-click="openSiteMedia(si, $event)"
+                                                                @media-click="openViewer($event)"
                                                                 @remove-media="removeSiteMedia(si, $event)"
                                                         ></media-grid>
                                                         <div v-else class="text-medium-emphasis text-caption mb-2">
@@ -598,26 +614,11 @@
                                             >${err}
                                             </v-alert>
 
-                                            <!-- Same viewer Bulletins use: images, PDF and Word render inline. -->
-                                            <inline-media-renderer
-                                                    v-if="expandedMedia"
-                                                    renderer-id="field-data-media"
-                                                    :media="expandedMedia.media"
-                                                    :media-type="expandedMedia.mediaType"
-                                                    :initial-orientation="expandedMedia.media?.orientation || 0"
-                                                    :use-metadata="true"
-                                                    class="mb-4"
-                                                    content-style="height: calc(100vh - 520px);"
-                                                    @close="expandedMedia = null"
-                                            ></inline-media-renderer>
-
                                             <media-grid
                                                     v-if="editedItem.medias && editedItem.medias.length"
                                                     :medias="editedItem.medias"
-                                                    :horizontal="Boolean(expandedMedia)"
-                                                    :mini-mode="Boolean(expandedMedia)"
                                                     enable-delete
-                                                    @media-click="expandedMedia = $event"
+                                                    @media-click="openViewer($event)"
                                                     @remove-media="removeMedia"
                                             ></media-grid>
                                             <div v-else class="text-medium-emphasis text-caption mb-2">
@@ -786,15 +787,16 @@
             pendingFiles: [],
             uploading: false,
             uploadErrors: [],
-            // Media currently opened in the inline viewer, or null.
-            expandedMedia: null,
+            // Media opened in the fullscreen viewer, or null.
+            viewerDialog: false,
+            viewerMedia: null,
+            viewerRenderer: null,
             openSitePanel: null,
             siteErrors: {},
             // Per-site media state, keyed by the site's index in the form.
             sitePendingFiles: {},
             siteUploading: {},
             siteUploadErrors: {},
-            expandedSiteMedia: {},
 
             dataTypeSuggestions: [
                 "{{ _('Photos') }}",
@@ -837,8 +839,22 @@
                 {% endif %}
                 return cols;
             },
+            // Both cases are listed: Chromium's Windows file dialog matches
+            // these extensions case-sensitively, so a lowercase-only list
+            // hides camera files named PHOTO.JPG. MIME types are appended so
+            // the picker still behaves for unusual extensions.
             acceptAttr() {
-                return ALLOWED_EXTENSIONS.map(e => '.' + e).join(',');
+                const exts = [];
+                ALLOWED_EXTENSIONS.forEach(e => {
+                    exts.push('.' + e.toLowerCase());
+                    if (e.toLowerCase() !== e.toUpperCase()) {
+                        exts.push('.' + e.toUpperCase());
+                    }
+                });
+                const mimes = [...new Set(
+                    ALLOWED_EXTENSIONS.map(e => MIME_BY_EXT[e.toLowerCase()]).filter(Boolean)
+                )];
+                return exts.concat(mimes).join(',');
             },
             allowedHint() {
                 return "{{ _('Allowed types') }}: " + ALLOWED_EXTENSIONS.join(', ');
@@ -945,12 +961,10 @@
                 this.nameError = [];
                 this.uploadErrors = [];
                 this.pendingFiles = [];
-                this.expandedMedia = null;
                 this.siteErrors = {};
                 this.sitePendingFiles = {};
                 this.siteUploading = {};
                 this.siteUploadErrors = {};
-                this.expandedSiteMedia = {};
             },
 
             // Files are stored immediately; the Media rows are only linked to
@@ -1016,28 +1030,42 @@
                 this.siteUploading[index] = false;
             },
 
-            openSiteMedia(index, payload) {
-                this.expandedSiteMedia[index] = payload;
+            // One viewer serves both location and site media.
+            openViewer(payload) {
+                if (!payload || !payload.media) return;
+                this.viewerMedia = payload;
+                this.viewerDialog = true;
             },
 
-            closeSiteMedia(index) {
-                this.expandedSiteMedia[index] = null;
+            closeViewer() {
+                this.viewerDialog = false;
+                this.viewerMedia = null;
+                this.viewerRenderer = null;
+            },
+
+            onViewerReady(payload) {
+                this.viewerRenderer = payload;
+            },
+
+            // The renderer's fullscreen button only works if the parent keeps
+            // the handle it hands over on ready.
+            requestViewerFullscreen() {
+                this.viewerRenderer?.requestFullscreen?.();
             },
 
             removeSiteMedia(siteIndex, mediaIndex) {
                 const site = this.editedItem.sites[siteIndex];
                 const removed = site.medias[mediaIndex];
-                const open = this.expandedSiteMedia[siteIndex];
-                if (open && open.media === removed) {
-                    this.expandedSiteMedia[siteIndex] = null;
+                if (this.viewerMedia && this.viewerMedia.media === removed) {
+                    this.closeViewer();
                 }
                 site.medias.splice(mediaIndex, 1);
             },
 
             removeMedia(index) {
                 const removed = this.editedItem.medias[index];
-                if (this.expandedMedia && this.expandedMedia.media === removed) {
-                    this.expandedMedia = null;
+                if (this.viewerMedia && this.viewerMedia.media === removed) {
+                    this.closeViewer();
                 }
                 this.editedItem.medias.splice(index, 1);
             },
