@@ -997,11 +997,37 @@
                             fileType: file.type || MIME_BY_EXT[ext] || 'application/octet-stream'
                         });
                     } catch (err) {
-                        const msg = err?.response?.data?.message || "{{ _('upload failed') }}";
-                        errors.push(`${file.name}: ${msg}`);
+                        errors.push(`${file.name}: ${this.uploadErrorText(err)}`);
                     }
                 }
                 return errors;
+            },
+
+            // A bare "upload failed" hides the cause: when the server answers
+            // with an HTML error page (500, or nginx's 413) there is no JSON
+            // message to read. Fall back to the status code and the common
+            // meanings so the operator has something to act on.
+            uploadErrorText(err) {
+                const res = err?.response;
+                if (!res) {
+                    return "{{ _('no response from the server - it may be down or the file too large for the proxy') }}";
+                }
+                const data = res.data;
+                if (data && typeof data === 'object' && data.message) return data.message;
+                if (res.status === 413) {
+                    return "{{ _('file too large - the web server rejected it (client_max_body_size)') }}";
+                }
+                if (res.status === 403) {
+                    return "{{ _('not permitted - your account may lack the Admin or DA role needed to upload') }}";
+                }
+                if (res.status === 401) {
+                    return "{{ _('session expired - reload the page and sign in again') }}";
+                }
+                if (res.status >= 500) {
+                    return "{{ _('server error') }} " + res.status +
+                        " - {{ _('check the Bayanat log; the media directory may not be writable') }}";
+                }
+                return "{{ _('upload failed') }} (HTTP " + res.status + ")";
             },
 
             async uploadFiles() {

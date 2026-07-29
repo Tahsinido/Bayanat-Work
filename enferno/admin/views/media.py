@@ -350,8 +350,27 @@ def api_medias_upload() -> Response:
         filename = Media.generate_file_name(file.filename)
         filepath = (Media.media_dir / filename).as_posix()
 
-        with open(filepath, "wb") as f:
-            file.save(f)
+        # Writing was previously unguarded: on a deployment where the media
+        # directory is missing or not writable by the app user, the OSError
+        # escaped as a generic HTML 500 and the browser could only report
+        # "upload failed" with no cause. Report the real reason instead.
+        try:
+            Media.media_dir.mkdir(parents=True, exist_ok=True)
+            with open(filepath, "wb") as f:
+                file.save(f)
+        except OSError as e:
+            # Activity has no FAILURE status, so this goes to the log only.
+            logger.error(
+                f"Failed to store upload at {filepath}: {e}",
+                exc_info=True,
+            )
+            return HTTPResponse.error(
+                f"Could not save the file on the server: {e.strerror or e}. "
+                "Check that the media directory exists and is writable.",
+                status=500,
+                expose_errors=True,
+            )
+
         # get md5 hash
         etag = get_file_hash(filepath)
         # check if file already exists
