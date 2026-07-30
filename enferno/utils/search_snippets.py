@@ -77,15 +77,37 @@ def build_snippet(
     return None
 
 
+def count_occurrences(value: Optional[str], terms: list[str]) -> int:
+    """Count how often any term appears in a piece of text.
+
+    Case-insensitive and counts every occurrence, including several on the
+    same line. Overlapping matches are not counted twice (str.count semantics).
+    """
+    text = strip_html(value).lower()
+    if not text:
+        return 0
+    return sum(text.count(term.lower()) for term in terms if term)
+
+
 def first_snippet(
     sources: list[tuple[str, Optional[str]]],
     terms: list[str],
     context_lines: int = DEFAULT_CONTEXT_LINES,
 ) -> Optional[dict[str, Any]]:
-    """Return the first snippet found across (label, text) pairs."""
+    """Return the first snippet found across (label, text) pairs.
+
+    The result also carries `occurrences`: how many times the term appears
+    across *all* the sources, not just the one quoted, so a row can show how
+    heavily the record features the term.
+    """
+    found = None
     for label, value in sources:
-        snippet = build_snippet(value, terms, context_lines)
-        if snippet:
-            snippet["field"] = label
-            return snippet
-    return None
+        if found is None:
+            snippet = build_snippet(value, terms, context_lines)
+            if snippet:
+                snippet["field"] = label
+                found = snippet
+
+    if found is not None:
+        found["occurrences"] = sum(count_occurrences(value, terms) for _, value in sources)
+    return found

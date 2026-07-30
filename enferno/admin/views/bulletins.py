@@ -146,6 +146,8 @@ def api_bulletins(validated_data: dict) -> Response:
             serialized_items.append(
                 {
                     "id": item.id,
+                    # One line either side keeps the results table compact:
+                    # the line before, the match, and the line after.
                     "snippet": (
                         first_snippet(
                             [
@@ -153,6 +155,7 @@ def api_bulletins(validated_data: dict) -> Response:
                                 ("Comments", item.comments),
                             ],
                             snippet_terms,
+                            context_lines=1,
                         )
                         if snippet_terms
                         else None

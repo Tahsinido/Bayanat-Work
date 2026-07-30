@@ -64,9 +64,15 @@
                              around it, so a row can be judged without opening it. -->
                         <template #['item.snippet']="{ item }">
                             <div v-if="item.snippet" class="py-2 snippet-cell" @click.stop>
-                                <div class="text-caption text-medium-emphasis font-weight-medium">
-                                    ${item.snippet.field}
-                                    <span class="text-disabled">({{ _('line') }} ${item.snippet.line_number})</span>
+                                <div class="text-caption text-medium-emphasis font-weight-medium d-flex align-center ga-2">
+                                    <span>
+                                        ${item.snippet.field}
+                                        <span class="text-disabled">({{ _('line') }} ${item.snippet.line_number})</span>
+                                    </span>
+                                    <v-chip v-if="item.snippet.occurrences" size="x-small" color="primary" variant="tonal">
+                                        ${item.snippet.occurrences}&nbsp;${item.snippet.occurrences === 1
+                                            ? "{{ _('mention') }}" : "{{ _('mentions') }}"}
+                                    </v-chip>
                                 </div>
                                 <div v-for="(l, i) in item.snippet.before" :key="'b'+i"
                                      class="text-caption text-disabled snippet-line">${l}</div>
