@@ -418,6 +418,7 @@ def register_commands(app):
     app.cli.add_command(commands.check_db_alignment)
     app.cli.add_command(commands.doctor)
     app.cli.add_command(commands.generate_config)
+    app.cli.add_command(commands.reindex_semantic)
     app.cli.add_command(commands.ocr_cli)
     app.cli.add_command(commands.export_cli)
 

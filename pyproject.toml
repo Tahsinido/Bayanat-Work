@@ -153,6 +153,14 @@ ai = [
     "numba>=0.60.0",  # Required for Python 3.12+ compatibility (whisper dependency)
 ]
 
+# Semantic (meaning-based) bulletin search. Runs entirely on the Bayanat
+# server: the sentence-transformer model is baked into the image at build time
+# and no query or document text ever leaves the host.
+semantic = [
+    "sentence-transformers>=3.0.0",
+    "torch>=2.8.0",
+]
+
 [project.urls]
 Homepage = "https://bayanat.org/"
 Documentation = "https://docs.bayanat.org/"

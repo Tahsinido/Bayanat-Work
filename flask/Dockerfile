@@ -25,7 +25,40 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock /app/
+
+# Semantic bulletin search is opt-in: it pulls torch and transformers, which
+# add roughly 2 GB to the image. Build with --build-arg WITH_SEMANTIC=true
+# (docker-compose-dev.yml sets it) to enable it.
+ARG WITH_SEMANTIC=false
 RUN uv sync --frozen --no-install-project
+
+# Installed separately from the lockfile, and deliberately from PyTorch's CPU
+# index: the default torch wheel drags in several GB of NVIDIA CUDA libraries
+# that a CPU-only server never loads. Versions are pinned so the build stays
+# reproducible even though these are not in uv.lock.
+RUN if [ "$WITH_SEMANTIC" = "true" ]; then \
+        uv pip install --python /app/.venv/bin/python \
+            --index-url https://download.pytorch.org/whl/cpu \
+            "torch==2.8.0" \
+        && uv pip install --python /app/.venv/bin/python \
+            "sentence-transformers==5.6.1"; \
+    fi
+
+# Bake the embedding model into the image so the running container never needs
+# network access. This is the only step that requires internet, and it happens
+# at build time, not at runtime.
+ARG SEMANTIC_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+ENV SEMANTIC_MODEL_PATH=/app/models/semantic
+# Always create the directory so the runtime COPY succeeds even when the
+# model was not built.
+RUN mkdir -p /app/models
+RUN if [ "$WITH_SEMANTIC" = "true" ]; then \
+        .venv/bin/python -c "\
+from sentence_transformers import SentenceTransformer; \
+m = SentenceTransformer('${SEMANTIC_MODEL}'); \
+m.save('${SEMANTIC_MODEL_PATH}'); \
+print('model saved to ${SEMANTIC_MODEL_PATH}')"; \
+    fi
 
 # ---- runtime stage -----------------------------------------------
 FROM python:3.12-slim-bookworm@sha256:76d4b7b6305788c6b4c6a19d6a22a3921bf802e9af4d5e1e5bd771208dba74bf AS runtime
@@ -70,6 +103,14 @@ RUN useradd --system --create-home --uid 1000 ubuntu
 
 COPY --chown=ubuntu:ubuntu . /app
 COPY --from=builder --chown=ubuntu:ubuntu /app/.venv /app/.venv
+
+# Embedding model (absent unless built with WITH_SEMANTIC=true). The offline
+# flags guarantee transformers never reaches for the network at runtime, even
+# if a model file were missing -- it fails loudly instead of calling out.
+COPY --from=builder --chown=ubuntu:ubuntu /app/models /app/models
+ENV SEMANTIC_MODEL_PATH=/app/models/semantic \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
 
 COPY --chown=ubuntu:ubuntu ./flask/bin/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod 550 /usr/local/bin/entrypoint.sh

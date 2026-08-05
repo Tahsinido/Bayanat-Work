@@ -1156,3 +1156,35 @@ def export_public(label, output, copy_media):
         click.echo(f"Copied {copied} media files ({missing} missing)")
 
     click.echo("Export complete.")
+
+
+@click.command()
+@click.option("--force", is_flag=True, help="Re-embed even if the content is unchanged.")
+@click.option("--batch-size", default=64, show_default=True, help="Bulletins per batch.")
+@with_appcontext
+def reindex_semantic(force: bool, batch_size: int) -> None:
+    """
+    Build (or rebuild) semantic search embeddings for all bulletins.
+
+    Runs entirely on this server; no content leaves the host.
+    """
+    from enferno.utils import semantic_search as ss
+    from enferno.utils.semantic_indexer import reindex_all
+
+    reason = ss.unavailable_reason()
+    if reason:
+        click.echo(f"Semantic search is unavailable: {reason}")
+        return
+
+    click.echo(f"Indexing with model '{ss.model_name()}' ...")
+    try:
+        result = reindex_all(batch_size=batch_size, force=force)
+    except Exception as e:
+        logger.error(f"Semantic reindex failed: {e}", exc_info=True)
+        click.echo(f"Reindex failed: {e}")
+        return
+
+    click.echo(
+        f"Done. {result['processed']} of {result['total']} bulletins processed, "
+        f"{result['written']} embeddings written."
+    )

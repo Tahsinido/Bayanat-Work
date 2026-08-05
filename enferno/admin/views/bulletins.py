@@ -22,11 +22,35 @@ from enferno.admin.validation.models import (
 from enferno.extensions import rds, db
 from enferno.tasks import bulk_update_bulletins
 from enferno.user.models import Role
+from enferno.utils.date_helper import DateHelper
 from enferno.utils.http_response import HTTPResponse
+from enferno.utils.logging_utils import get_logger
 from enferno.utils.search_utils import SearchUtils
 from enferno.utils.validation_utils import validate_with
 import enferno.utils.typing as t
 from . import admin, PER_PAGE, REL_PER_PAGE, can_assign_roles, reject_if_review_locked
+
+logger = get_logger()
+
+
+def index_bulletin_safely(bulletin) -> None:
+    """Refresh a bulletin's semantic vector after it changes.
+
+    Best-effort by design: semantic search is an optional extra, so a failure
+    here (or the feature being switched off entirely) must never stop a
+    bulletin from being saved. Imports and bulk updates deliberately do not
+    call this -- use `flask reindex-semantic` after those.
+    """
+    try:
+        from enferno.utils import semantic_search as ss
+
+        if not ss.is_available():
+            return
+        from enferno.utils.semantic_indexer import index_bulletin
+
+        index_bulletin(bulletin)
+    except Exception as e:
+        logger.error(f"Semantic indexing skipped for bulletin {bulletin.id}: {e}")
 
 
 # Bulletin fields routes
@@ -229,6 +253,7 @@ def api_bulletin_create(
 
     if bulletin.save():
         bulletin.create_revision()
+        index_bulletin_safely(bulletin)
         Activity.create(
             current_user,
             Activity.ACTION_CREATE,
@@ -312,6 +337,7 @@ def api_bulletin_update(id: t.id, validated_data: dict) -> Response:
         bulletin = bulletin.from_json(validated_data["item"])
 
         bulletin.create_revision()
+        index_bulletin_safely(bulletin)
         # Record Activity
         Activity.create(
             current_user,
@@ -618,3 +644,143 @@ def api_bulletin_self_assign(id: t.id, validated_data: dict) -> Response:
         return HTTPResponse.success(message=f"Saved Bulletin #{bulletin.id}")
     else:
         return HTTPResponse.not_found("Bulletin not found")
+
+
+@admin.post("/api/bulletins/semantic/")
+def api_bulletins_semantic() -> Response:
+    """
+    Meaning-based bulletin search.
+
+    Accepts a natural-language sentence and returns bulletins ranked by
+    semantic similarity, each with a relevance score, the passage that best
+    explains the match, and what specifically lined up. Runs wholly on this
+    server: nothing is sent to an external service.
+
+    Returns:
+        - json response with ranked items, or a clear message when semantic
+          search is not enabled on this deployment.
+    """
+    from enferno.utils import semantic_search as ss
+
+    reason = ss.unavailable_reason()
+    if reason:
+        return HTTPResponse.error(reason, status=503, expose_errors=True)
+
+    payload = request.json or {}
+    query = (payload.get("q") or "").strip()
+    limit = min(int(payload.get("limit") or 30), 100)
+
+    if not query:
+        return HTTPResponse.error("Enter something to search for", status=400)
+
+    Activity.create(
+        current_user,
+        Activity.ACTION_SEARCH,
+        Activity.STATUS_SUCCESS,
+        {"semantic": query},
+        "bulletin",
+    )
+
+    try:
+        # Over-fetch: permission filtering below removes some candidates, and
+        # we still want a full page of results afterwards.
+        ranked = ss.search(query, limit=limit * 4)
+    except Exception as e:
+        logger.error(f"Semantic search failed: {e}", exc_info=True)
+        return HTTPResponse.error(
+            "Semantic search failed. See the server log for details.", status=500
+        )
+
+    if not ranked:
+        return HTTPResponse.success(
+            data={
+                "items": [],
+                "total": 0,
+                "query": query,
+                "indexed": ss._index.matrix.shape[0],
+            }
+        )
+
+    by_id = {bid: score for bid, score in ranked}
+    bulletins = Bulletin.query.filter(Bulletin.id.in_(list(by_id.keys()))).all()
+
+    terms = ss.query_terms(query)
+    query_vector = ss.encode([query])[0]
+
+    items = []
+    for bulletin in bulletins:
+        # Same access rule the keyword search uses; restricted items are
+        # dropped entirely rather than returned as stubs.
+        if not (current_user and current_user.can_access(bulletin)):
+            continue
+
+        text = ss.bulletin_text(bulletin)
+        score = by_id.get(bulletin.id, 0.0)
+        evidence = ss.explain(bulletin, text, terms)
+
+        # Keyword overlap nudges exact hits above purely thematic ones.
+        keyword_boost = min(len(evidence["keywords"]) * 0.02, 0.10)
+        combined = max(0.0, min(1.0, score + keyword_boost))
+
+        items.append(
+            {
+                "id": bulletin.id,
+                "title": bulletin.title,
+                "title_ar": bulletin.title_ar,
+                "sjac_title": bulletin.sjac_title,
+                "status": bulletin.status,
+                "_status": bulletin.status,
+                "publish_date": (
+                    DateHelper.serialize_datetime(bulletin.publish_date)
+                    if bulletin.publish_date
+                    else None
+                ),
+                "assigned_to": (
+                    bulletin.assigned_to.to_compact() if bulletin.assigned_to else None
+                ),
+                "roles": (
+                    [{"id": r.id, "name": r.name, "color": r.color} for r in bulletin.roles]
+                    if bulletin.roles
+                    else []
+                ),
+                "score": round(combined * 100),
+                "semantic_score": round(score * 100),
+                "evidence": evidence,
+                "passage": ss.best_passage(text, query_vector),
+            }
+        )
+
+    items.sort(key=lambda i: i["score"], reverse=True)
+    items = items[:limit]
+
+    return HTTPResponse.success(
+        data={
+            "items": items,
+            "total": len(items),
+            "query": query,
+            "terms": terms,
+            "indexed": ss._index.matrix.shape[0],
+        }
+    )
+
+
+@admin.get("/api/bulletins/semantic/status")
+@roles_required("Admin")
+def api_bulletins_semantic_status() -> Response:
+    """Report whether semantic search is usable and how much is indexed."""
+    from enferno.admin.models import BulletinEmbedding
+    from enferno.utils import semantic_search as ss
+
+    reason = ss.unavailable_reason()
+    indexed = db.session.query(db.func.count(BulletinEmbedding.id)).scalar() or 0
+    total = db.session.query(db.func.count(Bulletin.id)).scalar() or 0
+
+    return HTTPResponse.success(
+        data={
+            "available": reason is None,
+            "reason": reason,
+            "model": ss.model_name(),
+            "indexed": indexed,
+            "bulletins": total,
+        }
+    )

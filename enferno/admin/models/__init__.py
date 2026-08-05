@@ -10,6 +10,7 @@ from .AtobInfo import AtobInfo
 from .Btob import Btob
 from .BtobInfo import BtobInfo
 from .Bulletin import Bulletin
+from .BulletinEmbedding import BulletinEmbedding
 from .BulletinHistory import BulletinHistory
 from .DynamicField import DynamicField
 from .DynamicFormHistory import DynamicFormHistory

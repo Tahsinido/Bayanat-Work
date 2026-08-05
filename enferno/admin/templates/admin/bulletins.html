@@ -84,7 +84,53 @@
                             <span v-else class="text-disabled text-caption">&mdash;</span>
                         </template>
 
+                        <!-- Semantic results: score, the passage that best explains
+                             the match, and what specifically lined up. -->
+                        <template #['item.semantic']="{ item }">
+                            <div v-if="item.score !== undefined" class="py-2 snippet-cell" @click.stop>
+                                <div class="d-flex align-center ga-2 mb-1">
+                                    <v-chip size="small"
+                                            :color="item.score >= 70 ? 'success' : (item.score >= 45 ? 'primary' : 'grey')"
+                                            variant="flat">${item.score}%</v-chip>
+                                    <span class="text-caption text-medium-emphasis">{{ _('relevance') }}</span>
+                                </div>
+                                <div v-if="item.passage" class="text-body-2 snippet-line mb-1">${item.passage}</div>
+                                <div class="d-flex flex-wrap ga-1">
+                                    <v-chip v-for="k in (item.evidence?.keywords || []).slice(0,6)" :key="'k'+k"
+                                            size="x-small" variant="tonal" color="primary">${k}</v-chip>
+                                    <v-chip v-for="l in (item.evidence?.locations || []).slice(0,3)" :key="'l'+l"
+                                            size="x-small" variant="tonal" color="teal"
+                                            prepend-icon="mdi-map-marker">${l}</v-chip>
+                                    <v-chip v-for="t in (item.evidence?.tags || []).slice(0,3)" :key="'t'+t"
+                                            size="x-small" variant="tonal">${t}</v-chip>
+                                    <v-chip v-for="s in (item.evidence?.sources || []).slice(0,2)" :key="'s'+s"
+                                            size="x-small" variant="tonal" color="grey">${s}</v-chip>
+                                </div>
+                                <div v-if="!item.evidence?.keywords?.length" class="text-caption text-disabled mt-1">
+                                    {{ _('Matched on meaning rather than wording') }}
+                                </div>
+                            </div>
+                        </template>
+
                         <template #top>
+                            <v-sheet v-if="semanticMode" class="mx-3 mt-3">
+                                <v-alert type="info" variant="tonal" density="compact">
+                                    <div class="d-flex align-center flex-wrap ga-2">
+                                        <span>
+                                            <strong>{{ _('Meaning-based search') }}</strong>
+                                            &mdash; {{ _('describe what you are looking for in plain language') }}
+                                        </span>
+                                        <v-spacer></v-spacer>
+                                        <span v-if="semanticInfo.indexed !== undefined" class="text-caption">
+                                            ${semanticInfo.indexed} {{ _('bulletins indexed') }}
+                                        </span>
+                                    </div>
+                                    <div v-if="semanticIntent" class="mt-2 text-body-2">
+                                        <strong>{{ _('Searching for') }}:</strong> ${semanticIntent}
+                                    </div>
+                                </v-alert>
+                            </v-sheet>
+
                             <v-sheet class="ma-3 d-flex align-center">
                                 <v-btn variant="text" class="hidden-sm-and-down" @click="allBulletins"
                                 >{{ _('All Bulletins') }}</v-btn
@@ -111,12 +157,26 @@
                                         @click:append-inner="resetSearch"
                                         @click:append="toggleAdvSearch"
                                         prepend-inner-icon="mdi-magnify"
-                                        label="{{ _('Search') }}"
+                                        :label="semanticMode
+                                            ? '{{ _('Describe what you are looking for') }}'
+                                            : '{{ _('Search') }}'"
                                         :bg-color="searchBg"
                                         
                                         
 
                                 ></v-text-field>
+
+                                <v-tooltip location="bottom">
+                                    <template #activator="{ props }">
+                                        <v-btn v-bind="props"
+                                               :color="semanticMode ? 'primary' : undefined"
+                                               :variant="semanticMode ? 'flat' : 'text'"
+                                               icon="mdi-brain"
+                                               class="ml-1"
+                                               @click="toggleSemantic"></v-btn>
+                                    </template>
+                                    {{ _('Meaning-based search (runs on this server)') }}
+                                </v-tooltip>
 
                                 <v-spacer></v-spacer>
                                 {% if current_user.roles_in(['Admin','DA']) %}
@@ -685,6 +745,12 @@
                     // Match column appears together with the rows that fill it.
                     snippetsActive: false,
 
+                    // Meaning-based search state.
+                    semanticMode: false,
+                    semanticActive: false,
+                    semanticInfo: {},
+                    semanticIntent: '',
+
 
                     items: [],
                     selected: [],
@@ -765,7 +831,12 @@
                         ];
 
                         // Only worth a column when a text search produced hits.
-                        if (this.snippetsActive) {
+                        if (this.semanticActive) {
+                            cols.push({
+                                title: "{{_('Relevance')}}", value: "semantic",
+                                sortable: false, width: 480
+                            });
+                        } else if (this.snippetsActive) {
                             cols.push({
                                 title: "{{_('Match')}}", value: "snippet",
                                 sortable: false, width: 460
@@ -1210,7 +1281,67 @@
                         this.goToFirstPage();
                     },
 
+                    toggleSemantic() {
+                        this.semanticMode = !this.semanticMode;
+                        if (!this.semanticMode) {
+                            this.semanticActive = false;
+                            this.semanticIntent = '';
+                        }
+                        this.refresh();
+                    },
+
+                    // Meaning-based search is a different query shape, so it
+                    // has its own request path rather than being squeezed into
+                    // the cursor-paginated keyword endpoint.
+                    semanticSearch() {
+                        const query = (this.search[0]?.tsv || '').trim();
+                        if (!query) {
+                            this.semanticActive = false;
+                            this.semanticIntent = '';
+                            return this.keywordRefresh();
+                        }
+
+                        this.loading = true;
+                        const startTime = new Date();
+
+                        axios.post('/admin/api/bulletins/semantic/', {
+                            q: query,
+                            limit: this.perPage
+                        }, { suppressGlobalErrorHandler: true })
+                            .then(response => {
+                                const d = response.data;
+                                this.items = d.items || [];
+                                this.totalCount = d.total || 0;
+                                this.semanticInfo = { indexed: d.indexed };
+                                this.semanticIntent = this.describeIntent(query, d.terms || []);
+                                this.semanticActive = true;
+                                this.snippetsActive = false;
+                                this.nextCursor = null;
+                                this.searchTime = ((new Date() - startTime) / 1000).toFixed(2);
+                            })
+                            .catch(err => {
+                                const msg = err?.response?.data?.message
+                                    || "{{ _('Meaning-based search is unavailable') }}";
+                                this.showSnack(msg);
+                                this.semanticActive = false;
+                            })
+                            .finally(() => { this.loading = false; });
+                    },
+
+                    // Plain restatement of the query, from the terms the server
+                    // actually used. Not model-generated: it reflects exactly
+                    // what was searched for.
+                    describeIntent(query, terms) {
+                        if (!terms.length) return query;
+                        return "{{ _('documents related to') }} " + terms.join(', ');
+                    },
+
                     refresh() {
+                        if (this.semanticMode) return this.semanticSearch();
+                        return this.keywordRefresh();
+                    },
+
+                    keywordRefresh() {
                         if (this.loading) return;
 
                         this.loading = true;
