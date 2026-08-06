@@ -1186,5 +1186,73 @@ def reindex_semantic(force: bool, batch_size: int) -> None:
 
     click.echo(
         f"Done. {result['processed']} of {result['total']} bulletins processed, "
-        f"{result['written']} embeddings written."
+        f"{result['written']} embeddings written, "
+        f"{result['up_to_date']} already current, "
+        f"{result['empty']} with nothing to index."
     )
+
+    # "0 written" on its own is ambiguous -- a complete index and a broken one
+    # look identical -- so say which this was.
+    current, stored_total = ss.stored_counts()
+    click.echo(f"Table now holds {current} vectors for model '{ss.model_name()}'.")
+    if stored_total > current:
+        click.echo(
+            f"Warning: {stored_total - current} more vectors are stored under a different "
+            "model name and are invisible to search. Re-run with --force to rebuild them."
+        )
+    if current == 0:
+        click.echo("Nothing is searchable yet. Check that bulletins have indexable text.")
+
+
+@click.command()
+@click.argument("query")
+@click.option("--limit", default=10, show_default=True, help="How many matches to show.")
+@with_appcontext
+def semantic_probe(query: str, limit: int) -> None:
+    """
+    Show raw similarity scores for QUERY, ignoring the relevance threshold.
+
+    Use this to pick a value for SEMANTIC_SEARCH_THRESHOLD: it prints what the
+    closest bulletins actually score, so a search that returns nothing can be
+    told apart from an index that holds nothing.
+    """
+    from enferno.utils import semantic_search as ss
+
+    reason = ss.unavailable_reason()
+    if reason:
+        click.echo(f"Semantic search is unavailable: {reason}")
+        return
+
+    threshold = ss.similarity_threshold()
+    loaded = ss.indexed_count()
+    current, stored_total = ss.stored_counts()
+
+    click.echo(f"Model:      {ss.model_name()}")
+    click.echo(f"Stored:     {current} vectors for this model ({stored_total} rows in total)")
+    click.echo(f"Loaded:     {loaded} vectors in the search index")
+    click.echo(f"Threshold:  {threshold} (SEMANTIC_SEARCH_THRESHOLD)")
+    click.echo("")
+
+    if loaded == 0:
+        click.echo("The index is empty, so no query can match. Run: flask reindex-semantic")
+        return
+
+    matches = ss.search(query, limit=limit, min_score=0.0)
+    if not matches:
+        click.echo("No vectors scored at all, which should not happen on a loaded index.")
+        return
+
+    passing = 0
+    for bulletin_id, score in matches:
+        mark = "PASS" if score >= threshold else "cut "
+        if score >= threshold:
+            passing += 1
+        click.echo(f"  [{mark}] bulletin {bulletin_id:<8} {score:.4f}  ({score * 100:.1f}%)")
+
+    click.echo("")
+    click.echo(f"{passing} of {len(matches)} shown would survive the {threshold} threshold.")
+    if passing == 0:
+        click.echo(
+            f"Every match is below the threshold. Lower SEMANTIC_SEARCH_THRESHOLD "
+            f"(try {max(0.05, round(matches[0][1] - 0.05, 2))}) to return the closest ones."
+        )

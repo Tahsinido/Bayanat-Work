@@ -374,8 +374,37 @@ def invalidate_index() -> None:
 
 
 def indexed_count() -> int:
-    """How many bulletins the loaded index holds."""
+    """How many bulletins the search index currently holds.
+
+    Loads the index first. Without that this reports 0 in any process that has
+    not searched yet -- which reads as "nothing is indexed" even when the table
+    is full, and sends anyone debugging an empty result set down the wrong path.
+    """
+    try:
+        _index.load()
+    except Exception as e:
+        logger.warning(f"Could not load the semantic index: {e}")
     return int(_index.matrix.shape[0]) if _index.matrix.size else 0
+
+
+def stored_counts() -> tuple[int, int]:
+    """(rows for the current model, rows for every model) in bulletin_embedding.
+
+    The two differ when vectors were written under a different model name --
+    after SEMANTIC_MODEL_PATH changes, say. Search filters on the current name,
+    so those rows are invisible to it while still sitting in the table.
+    """
+    from enferno.admin.models import BulletinEmbedding
+    from enferno.extensions import db
+
+    total = db.session.query(db.func.count(BulletinEmbedding.id)).scalar() or 0
+    current = (
+        db.session.query(db.func.count(BulletinEmbedding.id))
+        .filter(BulletinEmbedding.model == model_name())
+        .scalar()
+        or 0
+    )
+    return current, total
 
 
 # --------------------------------------------------------------------------

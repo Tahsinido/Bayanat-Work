@@ -817,19 +817,28 @@ def api_bulletins_semantic() -> Response:
 @roles_required("Admin")
 def api_bulletins_semantic_status() -> Response:
     """Report whether semantic search is usable and how much is indexed."""
-    from enferno.admin.models import BulletinEmbedding
     from enferno.utils import semantic_search as ss
 
     reason = ss.unavailable_reason()
-    indexed = db.session.query(db.func.count(BulletinEmbedding.id)).scalar() or 0
     total = db.session.query(db.func.count(Bulletin.id)).scalar() or 0
+
+    # Three separate numbers, because "nothing comes back" has three causes:
+    # nothing stored, stored under a model name search does not look for, or
+    # stored and loaded but cut by the threshold.
+    current, stored_total = ss.stored_counts()
+    loaded = ss.indexed_count() if reason is None else 0
 
     return HTTPResponse.success(
         data={
             "available": reason is None,
             "reason": reason,
             "model": ss.model_name(),
-            "indexed": indexed,
+            "indexed": current,
+            "embeddings_total": stored_total,
+            "embeddings_other_model": max(0, stored_total - current),
+            "loaded": loaded,
+            "threshold": ss.similarity_threshold(),
+            "max_results": ss.max_results(),
             "bulletins": total,
         }
     )
