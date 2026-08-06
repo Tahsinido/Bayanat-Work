@@ -9,7 +9,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from enferno.admin.constants import Constants
-from enferno.admin.models import Bulletin, Activity, WorkflowStatus
+from enferno.admin.models import Bulletin, Activity, Media, WorkflowStatus
 from enferno.utils.search_snippets import first_snippet
 from enferno.admin.models.Notification import Notification
 from enferno.admin.validation.models import (
@@ -31,6 +31,11 @@ import enferno.utils.typing as t
 from . import admin, PER_PAGE, REL_PER_PAGE, can_assign_roles, reject_if_review_locked
 
 logger = get_logger()
+
+# Returned when nothing clears the semantic similarity threshold. An empty page
+# with an explanation, not an error: the search ran, it just found nothing close
+# enough to be worth showing.
+NO_SEMANTIC_MATCHES = "No relevant bulletins were found."
 
 
 def index_bulletin_safely(bulletin) -> None:
@@ -651,10 +656,16 @@ def api_bulletins_semantic() -> Response:
     """
     Meaning-based bulletin search.
 
-    Accepts a natural-language sentence and returns bulletins ranked by
-    semantic similarity, each with a relevance score, the passage that best
+    Accepts a natural-language sentence and returns the bulletins whose meaning
+    is closest to it. Only matches at or above the configured similarity
+    threshold come back, ordered by similarity and capped at the configured
+    page size, each with its similarity percentage, the passage that best
     explains the match, and what specifically lined up. Runs wholly on this
     server: nothing is sent to an external service.
+
+    Both the threshold and the cap are deployment settings
+    (SEMANTIC_SEARCH_THRESHOLD / SEMANTIC_SEARCH_MAX_RESULTS); a request may
+    ask for a stricter threshold or a smaller page, never a looser one.
 
     Returns:
         - json response with ranked items, or a clear message when semantic
@@ -668,10 +679,28 @@ def api_bulletins_semantic() -> Response:
 
     payload = request.json or {}
     query = (payload.get("q") or "").strip()
-    limit = min(int(payload.get("limit") or 30), 100)
 
     if not query:
         return HTTPResponse.error("Enter something to search for", status=400)
+
+    configured_limit = ss.max_results()
+    threshold = ss.similarity_threshold()
+
+    # A caller may tighten either knob but not loosen it, so no request can
+    # widen the result set past what the deployment allows.
+    requested_limit = payload.get("limit")
+    if requested_limit:
+        try:
+            configured_limit = max(1, min(int(requested_limit), configured_limit))
+        except (TypeError, ValueError):
+            pass
+
+    requested_threshold = payload.get("threshold")
+    if requested_threshold is not None:
+        try:
+            threshold = min(1.0, max(threshold, float(requested_threshold)))
+        except (TypeError, ValueError):
+            pass
 
     Activity.create(
         current_user,
@@ -682,46 +711,64 @@ def api_bulletins_semantic() -> Response:
     )
 
     try:
+        # Embed once, then reuse the vector for retrieval and for picking the
+        # passage that explains each match.
+        query_vector = ss.encode_query(query)
         # Over-fetch: permission filtering below removes some candidates, and
         # we still want a full page of results afterwards.
-        ranked = ss.search(query, limit=limit * 4)
+        candidates = min(configured_limit * ss.CANDIDATE_MULTIPLIER, ss.MAX_CANDIDATES)
+        ranked = ss.search_vector(query_vector, limit=candidates, min_score=threshold)
     except Exception as e:
         logger.error(f"Semantic search failed: {e}", exc_info=True)
         return HTTPResponse.error(
             "Semantic search failed. See the server log for details.", status=500
         )
 
+    empty = {
+        "items": [],
+        "total": 0,
+        "query": query,
+        "threshold": round(threshold, 4),
+        "limit": configured_limit,
+        "indexed": ss.indexed_count(),
+    }
     if not ranked:
-        return HTTPResponse.success(
-            data={
-                "items": [],
-                "total": 0,
-                "query": query,
-                "indexed": ss._index.matrix.shape[0],
-            }
-        )
+        return HTTPResponse.success(data=empty, message=NO_SEMANTIC_MATCHES)
 
     by_id = {bid: score for bid, score in ranked}
-    bulletins = Bulletin.query.filter(Bulletin.id.in_(list(by_id.keys()))).all()
+    # Everything bulletin_text() reads is loaded up front: without this the
+    # page costs one query per relationship per result.
+    bulletins = (
+        Bulletin.query.filter(Bulletin.id.in_(list(by_id.keys())))
+        .options(
+            selectinload(Bulletin.assigned_to),
+            selectinload(Bulletin.roles),
+            selectinload(Bulletin.locations),
+            selectinload(Bulletin.labels),
+            selectinload(Bulletin.ver_labels),
+            selectinload(Bulletin.sources),
+            selectinload(Bulletin.events),
+            selectinload(Bulletin.medias).selectinload(Media.extraction),
+        )
+        .all()
+    )
+
+    # Rank first and cut to the page, then do the per-result work. Passages and
+    # evidence are only ever computed for bulletins actually being returned.
+    visible = [b for b in bulletins if current_user and current_user.can_access(b)]
+    visible.sort(key=lambda b: by_id.get(b.id, 0.0), reverse=True)
+    visible = visible[:configured_limit]
+
+    if not visible:
+        return HTTPResponse.success(data=empty, message=NO_SEMANTIC_MATCHES)
 
     terms = ss.query_terms(query)
-    query_vector = ss.encode([query])[0]
+    texts = [ss.bulletin_text(b) for b in visible]
+    passages = ss.best_passages(texts, query_vector)
 
     items = []
-    for bulletin in bulletins:
-        # Same access rule the keyword search uses; restricted items are
-        # dropped entirely rather than returned as stubs.
-        if not (current_user and current_user.can_access(bulletin)):
-            continue
-
-        text = ss.bulletin_text(bulletin)
+    for bulletin, text, passage in zip(visible, texts, passages):
         score = by_id.get(bulletin.id, 0.0)
-        evidence = ss.explain(bulletin, text, terms)
-
-        # Keyword overlap nudges exact hits above purely thematic ones.
-        keyword_boost = min(len(evidence["keywords"]) * 0.02, 0.10)
-        combined = max(0.0, min(1.0, score + keyword_boost))
-
         items.append(
             {
                 "id": bulletin.id,
@@ -743,15 +790,15 @@ def api_bulletins_semantic() -> Response:
                     if bulletin.roles
                     else []
                 ),
-                "score": round(combined * 100),
-                "semantic_score": round(score * 100),
-                "evidence": evidence,
-                "passage": ss.best_passage(text, query_vector),
+                # One number throughout: what the threshold cut on, what the
+                # ordering follows, and what the UI shows.
+                "similarity": round(score, 4),
+                "score": round(score * 100, 1),
+                "semantic_score": round(score * 100, 1),
+                "evidence": ss.explain(bulletin, text, terms),
+                "passage": passage,
             }
         )
-
-    items.sort(key=lambda i: i["score"], reverse=True)
-    items = items[:limit]
 
     return HTTPResponse.success(
         data={
@@ -759,7 +806,9 @@ def api_bulletins_semantic() -> Response:
             "total": len(items),
             "query": query,
             "terms": terms,
-            "indexed": ss._index.matrix.shape[0],
+            "threshold": round(threshold, 4),
+            "limit": configured_limit,
+            "indexed": ss.indexed_count(),
         }
     )
 

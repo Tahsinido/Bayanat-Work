@@ -90,9 +90,9 @@
                             <div v-if="item.score !== undefined" class="py-2 snippet-cell" @click.stop>
                                 <div class="d-flex align-center ga-2 mb-1">
                                     <v-chip size="small"
-                                            :color="item.score >= 70 ? 'success' : (item.score >= 45 ? 'primary' : 'grey')"
+                                            :color="item.score >= 85 ? 'success' : (item.score >= 75 ? 'primary' : 'blue-grey')"
                                             variant="flat">${item.score}%</v-chip>
-                                    <span class="text-caption text-medium-emphasis">{{ _('relevance') }}</span>
+                                    <span class="text-caption text-medium-emphasis">{{ _('similarity') }}</span>
                                 </div>
                                 <div v-if="item.passage" class="text-body-2 snippet-line mb-1">${item.passage}</div>
                                 <div class="d-flex flex-wrap ga-1">
@@ -123,11 +123,22 @@
                                         <v-spacer></v-spacer>
                                         <span v-if="semanticInfo.indexed !== undefined" class="text-caption">
                                             ${semanticInfo.indexed} {{ _('bulletins indexed') }}
+                                            <template v-if="semanticInfo.threshold !== undefined">
+                                                &middot; {{ _('showing matches above') }}
+                                                ${Math.round(semanticInfo.threshold * 100)}%
+                                            </template>
                                         </span>
                                     </div>
                                     <div v-if="semanticIntent" class="mt-2 text-body-2">
                                         <strong>{{ _('Searching for') }}:</strong> ${semanticIntent}
                                     </div>
+                                </v-alert>
+
+                                <!-- Nothing cleared the similarity threshold. Not an
+                                     error: the search ran and found nothing close enough. -->
+                                <v-alert v-if="semanticEmptyMessage" type="warning" variant="tonal"
+                                         density="compact" class="mt-2">
+                                    ${semanticEmptyMessage}
                                 </v-alert>
                             </v-sheet>
 
@@ -750,6 +761,7 @@
                     semanticActive: false,
                     semanticInfo: {},
                     semanticIntent: '',
+                    semanticEmptyMessage: '',
 
 
                     items: [],
@@ -833,7 +845,7 @@
                         // Only worth a column when a text search produced hits.
                         if (this.semanticActive) {
                             cols.push({
-                                title: "{{_('Relevance')}}", value: "semantic",
+                                title: "{{_('Similarity')}}", value: "semantic",
                                 sortable: false, width: 480
                             });
                         } else if (this.snippetsActive) {
@@ -1287,6 +1299,7 @@
                             this.semanticActive = false;
                             this.semanticIntent = '';
                         }
+                        this.semanticEmptyMessage = '';
                         this.refresh();
                     },
 
@@ -1298,22 +1311,29 @@
                         if (!query) {
                             this.semanticActive = false;
                             this.semanticIntent = '';
+                            this.semanticEmptyMessage = '';
                             return this.keywordRefresh();
                         }
 
                         this.loading = true;
                         const startTime = new Date();
 
+                        // No limit is sent: how many results a meaning-based
+                        // search returns is a deployment setting, not a page size.
                         axios.post('/admin/api/bulletins/semantic/', {
-                            q: query,
-                            limit: this.perPage
+                            q: query
                         }, { suppressGlobalErrorHandler: true })
                             .then(response => {
                                 const d = response.data;
                                 this.items = d.items || [];
                                 this.totalCount = d.total || 0;
-                                this.semanticInfo = { indexed: d.indexed };
+                                this.semanticInfo = {
+                                    indexed: d.indexed,
+                                    threshold: d.threshold,
+                                    limit: d.limit,
+                                };
                                 this.semanticIntent = this.describeIntent(query, d.terms || []);
+                                this.semanticEmptyMessage = this.items.length ? '' : (d.message || '');
                                 this.semanticActive = true;
                                 this.snippetsActive = false;
                                 this.nextCursor = null;
@@ -1324,6 +1344,7 @@
                                     || "{{ _('Meaning-based search is unavailable') }}";
                                 this.showSnack(msg);
                                 this.semanticActive = false;
+                                this.semanticEmptyMessage = '';
                             })
                             .finally(() => { this.loading = false; });
                     },

@@ -2044,6 +2044,8 @@ class FullConfigValidationModel(ConfigValidationModel):
     LLM_OCR_MODEL: Optional[str] = None
     LLM_OCR_API_KEY: Optional[str] = None
     DEDUP_TOOL: bool
+    SEMANTIC_SEARCH_THRESHOLD: Optional[float] = Field(default=None, ge=0, le=1)
+    SEMANTIC_SEARCH_MAX_RESULTS: Optional[int] = Field(default=None, gt=0, le=200)
     MAPS_API_ENDPOINT: str
     DEDUP_LOW_DISTANCE: Optional[float] = Field(default=None, ge=0, le=1)
     DEDUP_MAX_DISTANCE: Optional[float] = Field(default=None, ge=0, le=1)

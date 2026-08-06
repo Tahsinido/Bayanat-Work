@@ -116,7 +116,28 @@
                                     </v-slide-y-transition>
                     
                                     <v-divider class="my-4"></v-divider>
-                    
+
+                                    <h4 class="subtitle-2 mb-1">{{ _('Meaning-based bulletin search') }}</h4>
+                                    <p class="text-caption">{{ _('Controls how strict meaning-based (semantic) bulletin search is. Raise the threshold to return fewer, closer matches; lower it to widen the net.') }}</p>
+                                    <v-row>
+                                        <v-col cols="6">
+                                            <v-text-field v-bind="inputProps" type="number" persistent-hint
+                                                step="0.05" min="0" max="1"
+                                                hint="{{ _('Minimum similarity (0 to 1) a bulletin must reach to be returned. Default 0.65.') }}"
+                                                label="{{ _('Semantic search similarity threshold') }}"
+                                                v-model.number="eitem.SEMANTIC_SEARCH_THRESHOLD"></v-text-field>
+                                        </v-col>
+                                        <v-col cols="6">
+                                            <v-text-field v-bind="inputProps" type="number" persistent-hint
+                                                min="1" max="200"
+                                                hint="{{ _('Most bulletins a single meaning-based search may return. Default 20.') }}"
+                                                label="{{ _('Semantic search maximum results') }}"
+                                                v-model.number="eitem.SEMANTIC_SEARCH_MAX_RESULTS"></v-text-field>
+                                        </v-col>
+                                    </v-row>
+
+                                    <v-divider class="my-4"></v-divider>
+
                                     <h4 class="subtitle-2 mb-n1">{{ _('Advanced analysis features') }}</h4>
                                     <v-switch v-model="eitem.ADV_ANALYSIS" persistent-hint
                                         hint="{{ _('Advanced features for more efficient analysis.') }}"></v-switch>

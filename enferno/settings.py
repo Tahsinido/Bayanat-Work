@@ -215,6 +215,21 @@ class Config(object):
     # Enable data deduplication tool
     DEDUP_TOOL = manager.get_config("DEDUP_TOOL")
 
+    # Semantic (meaning-based) bulletin search. The threshold is the minimum
+    # cosine similarity a bulletin must reach to be shown at all; max results
+    # caps the page. Environment wins over config.json so a deployment can tune
+    # relevance without editing the saved configuration.
+    SEMANTIC_SEARCH_THRESHOLD = float(
+        os.environ.get("SEMANTIC_SEARCH_THRESHOLD")
+        or manager.get_config("SEMANTIC_SEARCH_THRESHOLD")
+        or 0.65
+    )
+    SEMANTIC_SEARCH_MAX_RESULTS = int(
+        os.environ.get("SEMANTIC_SEARCH_MAX_RESULTS")
+        or manager.get_config("SEMANTIC_SEARCH_MAX_RESULTS")
+        or 20
+    )
+
     # Valid video extension list (will be processed during ETL)
     ETL_VID_EXT = manager.get_config("ETL_VID_EXT")
 
@@ -534,6 +549,8 @@ class TestConfig:
     EXPORT_TOOL = False
     EXPORT_DEFAULT_EXPIRY = timedelta(hours=2)
     DEDUP_TOOL = False
+    SEMANTIC_SEARCH_THRESHOLD = 0.65
+    SEMANTIC_SEARCH_MAX_RESULTS = 20
     DEDUP_LOW_DISTANCE = 0.3
     DEDUP_MAX_DISTANCE = 0.5
     DEDUP_BATCH_SIZE = 30

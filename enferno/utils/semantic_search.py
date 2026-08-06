@@ -9,6 +9,11 @@ that semantic search is switched off rather than erroring.
 Storage is a plain bytea column (see BulletinEmbedding) because pgvector is not
 present in the PostGIS image this project ships. Vectors are L2-normalised at
 write time, so scoring is a single matrix-vector product.
+
+Retrieval is deliberately narrow: a query is embedded once, compared against the
+stored vectors, cut at a similarity threshold, and truncated to the best few.
+Nothing is re-embedded per result at request time except the short passages used
+to explain a match, and those are batched into one call.
 """
 
 from __future__ import annotations
@@ -17,7 +22,8 @@ import hashlib
 import os
 import re
 import threading
-from typing import Any, Iterable, Optional
+from collections import OrderedDict
+from typing import Any, Optional
 
 import numpy as np
 
@@ -27,6 +33,22 @@ from enferno.utils.search_snippets import strip_html
 logger = get_logger()
 
 DEFAULT_MODEL_PATH = os.environ.get("SEMANTIC_MODEL_PATH", "/app/models/semantic")
+
+# Relevance floor and page size. Both are overridable per deployment through
+# app settings (config.json / the admin settings screen) or the matching
+# environment variable -- see settings.Config.
+DEFAULT_SIMILARITY_THRESHOLD = 0.65
+DEFAULT_MAX_RESULTS = 20
+
+# Restricted bulletins are dropped *after* retrieval, so asking the index for
+# exactly max_results would return a short page. Over-fetch, but bound it: the
+# extra candidates cost one dot product each and nothing more.
+CANDIDATE_MULTIPLIER = 5
+MAX_CANDIDATES = 500
+
+# Queries repeat constantly (re-search, refine one word, toggle a filter) and a
+# query vector is ~1.5 KB, so keeping the last few skips the encode entirely.
+QUERY_CACHE_SIZE = 256
 
 # Sentence splitter covering Latin and Arabic terminators.
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?؟۔])\s+|\n+")
@@ -43,6 +65,51 @@ _STOPWORDS = {
 
 _model = None
 _model_lock = threading.Lock()
+
+_query_cache: "OrderedDict[str, np.ndarray]" = OrderedDict()
+_query_cache_lock = threading.Lock()
+
+
+# --------------------------------------------------------------------------
+# Tunables
+# --------------------------------------------------------------------------
+
+
+def _setting(key: str, default, cast):
+    """Read a tunable from app settings, then the environment, then the default.
+
+    Kept tolerant on purpose: a malformed value in config.json must not take
+    search down, so it is logged and the default stands.
+    """
+    value = None
+    try:
+        from enferno.settings import Config
+
+        value = Config.get(key, None)
+    except Exception:
+        value = None
+
+    if value is None:
+        value = os.environ.get(key)
+    if value is None or value == "":
+        return default
+
+    try:
+        return cast(value)
+    except (TypeError, ValueError):
+        logger.warning(f"Invalid {key}={value!r}, falling back to {default}")
+        return default
+
+
+def similarity_threshold() -> float:
+    """Minimum cosine similarity a bulletin must reach to be returned."""
+    value = _setting("SEMANTIC_SEARCH_THRESHOLD", DEFAULT_SIMILARITY_THRESHOLD, float)
+    return min(max(value, 0.0), 1.0)
+
+
+def max_results() -> int:
+    """Most bulletins a single semantic search may return."""
+    return max(1, _setting("SEMANTIC_SEARCH_MAX_RESULTS", DEFAULT_MAX_RESULTS, int))
 
 
 def is_available() -> bool:
@@ -106,6 +173,31 @@ def encode(texts: list[str]) -> np.ndarray:
         show_progress_bar=False,
     )
     return np.asarray(vectors, dtype=np.float32)
+
+
+def encode_query(query: str) -> np.ndarray:
+    """Embed a search query, at most once per distinct query.
+
+    Encoding is the single most expensive step of a search, and it does not
+    depend on how many bulletins are indexed. Callers that need the vector for
+    more than retrieval (passage selection, for instance) should take it from
+    here rather than encoding the query a second time.
+    """
+    key = (query or "").strip()
+    with _query_cache_lock:
+        cached = _query_cache.get(key)
+        if cached is not None:
+            _query_cache.move_to_end(key)
+            return cached
+
+    vector = encode([key])[0]
+
+    with _query_cache_lock:
+        _query_cache[key] = vector
+        _query_cache.move_to_end(key)
+        while len(_query_cache) > QUERY_CACHE_SIZE:
+            _query_cache.popitem(last=False)
+    return vector
 
 
 # --------------------------------------------------------------------------
@@ -212,33 +304,78 @@ class _Index:
             self.stamp = stamp
             logger.info(f"Semantic index loaded: {len(self.ids)} bulletins")
 
-    def search(self, query_vector: np.ndarray, limit: int) -> list[tuple[int, float]]:
-        """Return (bulletin_id, similarity) pairs, best first."""
-        if self.matrix.size == 0:
+    def search(
+        self, query_vector: np.ndarray, limit: int, min_score: float = 0.0
+    ) -> list[tuple[int, float]]:
+        """Return (bulletin_id, similarity) pairs above `min_score`, best first.
+
+        One dot product covers the whole index; the threshold then cuts it down
+        before any sorting happens, so the cost of ordering scales with the
+        number of *relevant* bulletins rather than the number indexed.
+        """
+        if self.matrix.size == 0 or limit <= 0:
             return []
+
         # Vectors are normalised, so the dot product is the cosine.
         scores = self.matrix @ query_vector
-        take = min(limit, scores.shape[0])
-        top = np.argpartition(-scores, take - 1)[:take]
-        top = top[np.argsort(-scores[top])]
-        return [(int(self.ids[i]), float(scores[i])) for i in top]
+
+        if min_score > 0.0:
+            keep = np.flatnonzero(scores >= min_score)
+            if keep.size == 0:
+                return []
+            subset = scores[keep]
+        else:
+            keep = None
+            subset = scores
+
+        take = min(limit, subset.shape[0])
+        if take < subset.shape[0]:
+            # Partial selection: O(n) instead of a full O(n log n) sort.
+            top = np.argpartition(-subset, take - 1)[:take]
+        else:
+            top = np.arange(subset.shape[0])
+        top = top[np.argsort(-subset[top])]
+
+        rows = top if keep is None else keep[top]
+        return [(int(self.ids[r]), float(scores[r])) for r in rows]
 
 
 _index = _Index()
 
 
-def search(query: str, limit: int = 50) -> list[tuple[int, float]]:
-    """Embed the query and return the closest bulletins."""
+def search_vector(
+    query_vector: np.ndarray, limit: Optional[int] = None, min_score: Optional[float] = None
+) -> list[tuple[int, float]]:
+    """Closest bulletins to an already-embedded query, best first.
+
+    Split out from `search` so a caller that also needs the query vector can
+    embed once and pass it in.
+    """
+    if limit is None:
+        limit = max_results()
+    if min_score is None:
+        min_score = similarity_threshold()
+    _index.load()
+    return _index.search(query_vector, limit, min_score)
+
+
+def search(
+    query: str, limit: Optional[int] = None, min_score: Optional[float] = None
+) -> list[tuple[int, float]]:
+    """Embed the query and return the closest bulletins above the threshold."""
     if not query or not query.strip():
         return []
-    _index.load()
-    vector = encode([query])[0]
-    return _index.search(vector, limit)
+    return search_vector(encode_query(query), limit, min_score)
 
 
 def invalidate_index() -> None:
     """Force the next search to reload from the table."""
     _index.stamp = None
+
+
+def indexed_count() -> int:
+    """How many bulletins the loaded index holds."""
+    return int(_index.matrix.shape[0]) if _index.matrix.size else 0
 
 
 # --------------------------------------------------------------------------
@@ -257,19 +394,52 @@ def query_terms(query: str) -> list[str]:
     return out
 
 
-def best_passage(text: str, query_vector: np.ndarray, max_sentences: int = 40) -> Optional[str]:
-    """The sentence that best explains why a document matched.
+def best_passages(
+    texts: list[str],
+    query_vector: np.ndarray,
+    max_sentences: int = 12,
+    max_total: int = 240,
+) -> list[Optional[str]]:
+    """The sentence that best explains each match, in a single embedding pass.
 
-    Only the first `max_sentences` are considered, which bounds the cost on
-    very long documents.
+    Embedding is dominated by per-call overhead, so one call for every result on
+    the page beats one call per result. Two caps keep the worst case bounded
+    regardless of how long the documents are: `max_sentences` per document and
+    `max_total` across the whole page.
+
+    Returns one entry per input text, None where nothing was long enough to
+    quote.
     """
-    sentences = [s.strip() for s in _SENTENCE_SPLIT.split(text) if len(s.strip()) > 20]
+    spans: list[tuple[int, int]] = []
+    sentences: list[str] = []
+    budget = max_total
+
+    for text in texts:
+        picked: list[str] = []
+        if budget > 0 and text:
+            picked = [s.strip() for s in _SENTENCE_SPLIT.split(text) if len(s.strip()) > 20]
+            picked = picked[: min(max_sentences, budget)]
+        spans.append((len(sentences), len(picked)))
+        sentences.extend(picked)
+        budget -= len(picked)
+
     if not sentences:
-        return None
-    sentences = sentences[:max_sentences]
-    vectors = encode(sentences)
-    scores = vectors @ query_vector
-    return sentences[int(np.argmax(scores))]
+        return [None] * len(texts)
+
+    scores = encode(sentences) @ query_vector
+
+    out: list[Optional[str]] = []
+    for start, count in spans:
+        if count == 0:
+            out.append(None)
+            continue
+        out.append(sentences[start + int(np.argmax(scores[start : start + count]))])
+    return out
+
+
+def best_passage(text: str, query_vector: np.ndarray, max_sentences: int = 12) -> Optional[str]:
+    """The sentence that best explains why a single document matched."""
+    return best_passages([text], query_vector, max_sentences=max_sentences)[0]
 
 
 def explain(bulletin, text: str, terms: list[str]) -> dict[str, Any]:
