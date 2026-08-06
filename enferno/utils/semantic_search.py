@@ -50,6 +50,22 @@ MAX_CANDIDATES = 500
 # query vector is ~1.5 KB, so keeping the last few skips the encode entirely.
 QUERY_CACHE_SIZE = 256
 
+# A bulletin is embedded as several passages rather than one vector.
+#
+# The model has a hard input window (128 tokens for the shipped
+# paraphrase-multilingual-MiniLM-L12-v2). One vector per bulletin means
+# everything past that window is silently dropped -- and since the text starts
+# with four title fields, that cut the description short and dropped every
+# field after it, attachment OCR text included. Chunking puts every field
+# inside some window, and scoring a bulletin by its best-matching chunk also
+# beats averaging the whole record into one blurry vector.
+#
+# CHUNK_CHARS is deliberately below the window: Arabic tokenizes to roughly
+# three characters per token under XLM-R, so a Latin-calibrated budget would
+# still truncate Arabic text.
+CHUNK_CHARS = 320
+MAX_CHUNKS_PER_BULLETIN = 24
+
 # Sentence splitter covering Latin and Arabic terminators.
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?؟۔])\s+|\n+")
 _WORD = re.compile(r"\w+", re.UNICODE)
@@ -205,11 +221,15 @@ def encode_query(query: str) -> np.ndarray:
 # --------------------------------------------------------------------------
 
 
-def bulletin_text(bulletin) -> str:
-    """Assemble everything searchable about a bulletin into one string.
+def bulletin_parts(bulletin) -> list[str]:
+    """Everything searchable about a bulletin, as separate pieces.
 
     Covers the fields the request asks for: titles, description, comments,
     tags, locations, labels, sources, and OCR text extracted from attachments.
+
+    The single source of truth for what "searchable" means -- both the change
+    hash and the embedded chunks are built from this, so a field can never be
+    indexed but not hashed, or the reverse.
     """
     parts: list[str] = []
 
@@ -249,7 +269,67 @@ def bulletin_text(bulletin) -> str:
             add(getattr(extraction, "search_text", None))
         add(getattr(media, "title", None))
 
-    return "\n".join(parts)
+    return parts
+
+
+def bulletin_text(bulletin) -> str:
+    """Everything searchable about a bulletin as one string.
+
+    Used for the change hash and for keyword evidence, not for embedding --
+    see bulletin_chunks() for that.
+    """
+    return "\n".join(bulletin_parts(bulletin))
+
+
+def _units(parts: list[str]) -> list[str]:
+    """Break the parts into pieces that each fit inside one chunk.
+
+    Long fields are split on sentence boundaries first so a chunk never ends
+    mid-thought; a single sentence longer than the budget is cut on whitespace
+    as a last resort.
+    """
+    out: list[str] = []
+    for part in parts:
+        if len(part) <= CHUNK_CHARS:
+            out.append(part)
+            continue
+        for sentence in _SENTENCE_SPLIT.split(part):
+            text = sentence.strip()
+            while len(text) > CHUNK_CHARS:
+                cut = text.rfind(" ", 0, CHUNK_CHARS)
+                if cut <= 0:
+                    cut = CHUNK_CHARS
+                out.append(text[:cut].strip())
+                text = text[cut:].strip()
+            if text:
+                out.append(text)
+    return out
+
+
+def bulletin_chunks(bulletin) -> list[str]:
+    """The passages to embed for a bulletin, each within the model's window.
+
+    Short fields are packed together so a bulletin does not get one vector per
+    tag; long ones are spread across as many chunks as they need. Capped per
+    bulletin so a single enormous record cannot dominate the index.
+    """
+    chunks: list[str] = []
+    current = ""
+
+    for unit in _units(bulletin_parts(bulletin)):
+        if not current:
+            current = unit
+        elif len(current) + 1 + len(unit) <= CHUNK_CHARS:
+            current = f"{current}\n{unit}"
+        else:
+            chunks.append(current)
+            if len(chunks) >= MAX_CHUNKS_PER_BULLETIN:
+                return chunks
+            current = unit
+
+    if current and len(chunks) < MAX_CHUNKS_PER_BULLETIN:
+        chunks.append(current)
+    return chunks
 
 
 def content_hash(text: str) -> str:
@@ -263,11 +343,16 @@ def content_hash(text: str) -> str:
 
 
 class _Index:
-    """In-memory matrix of stored vectors, rebuilt when the table changes."""
+    """In-memory matrix of stored chunk vectors, rebuilt when the table changes.
+
+    One row per chunk, so `ids` repeats a bulletin id once per chunk and
+    `texts` holds the passage each row was built from.
+    """
 
     def __init__(self):
         self.ids: np.ndarray = np.empty(0, dtype=np.int64)
         self.matrix: np.ndarray = np.empty((0, 0), dtype=np.float32)
+        self.texts: list[Optional[str]] = []
         self.model: Optional[str] = None
         self.stamp: Optional[tuple] = None
         self.lock = threading.Lock()
@@ -288,30 +373,41 @@ class _Index:
                 return
 
             rows = (
-                db.session.query(BulletinEmbedding.bulletin_id, BulletinEmbedding.vector)
+                db.session.query(
+                    BulletinEmbedding.bulletin_id,
+                    BulletinEmbedding.vector,
+                    BulletinEmbedding.chunk_text,
+                )
                 .filter(BulletinEmbedding.model == current)
                 .all()
             )
             if rows:
                 self.ids = np.array([r[0] for r in rows], dtype=np.int64)
-                self.matrix = np.vstack(
-                    [np.frombuffer(r[1], dtype=np.float32) for r in rows]
-                )
+                self.matrix = np.vstack([np.frombuffer(r[1], dtype=np.float32) for r in rows])
+                self.texts = [r[2] for r in rows]
             else:
                 self.ids = np.empty(0, dtype=np.int64)
                 self.matrix = np.empty((0, 0), dtype=np.float32)
+                self.texts = []
             self.model = current
             self.stamp = stamp
-            logger.info(f"Semantic index loaded: {len(self.ids)} bulletins")
+            logger.info(
+                f"Semantic index loaded: {len(self.ids)} chunks "
+                f"across {len(set(self.ids.tolist()))} bulletins"
+            )
 
     def search(
         self, query_vector: np.ndarray, limit: int, min_score: float = 0.0
-    ) -> list[tuple[int, float]]:
-        """Return (bulletin_id, similarity) pairs above `min_score`, best first.
+    ) -> list[tuple[int, float, Optional[str]]]:
+        """Best-matching bulletins above `min_score`, best first.
+
+        Returns (bulletin_id, similarity, passage). Rows are chunks, so a
+        bulletin can appear many times in the raw scores; it is scored by its
+        single best chunk and that chunk is the passage explaining the match.
 
         One dot product covers the whole index; the threshold then cuts it down
         before any sorting happens, so the cost of ordering scales with the
-        number of *relevant* bulletins rather than the number indexed.
+        number of *relevant* chunks rather than the number indexed.
         """
         if self.matrix.size == 0 or limit <= 0:
             return []
@@ -323,21 +419,38 @@ class _Index:
             keep = np.flatnonzero(scores >= min_score)
             if keep.size == 0:
                 return []
-            subset = scores[keep]
         else:
-            keep = None
-            subset = scores
+            keep = np.arange(scores.shape[0])
+        subset = scores[keep]
 
-        take = min(limit, subset.shape[0])
-        if take < subset.shape[0]:
+        # Collapsing chunks to bulletins can only shrink the list, so pull a
+        # pool big enough that `limit` distinct bulletins survive even if every
+        # one of them contributes the maximum number of chunks.
+        pool = min(subset.shape[0], max(limit * MAX_CHUNKS_PER_BULLETIN, 256))
+        if pool < subset.shape[0]:
             # Partial selection: O(n) instead of a full O(n log n) sort.
-            top = np.argpartition(-subset, take - 1)[:take]
+            top = np.argpartition(-subset, pool - 1)[:pool]
         else:
             top = np.arange(subset.shape[0])
         top = top[np.argsort(-subset[top])]
 
-        rows = top if keep is None else keep[top]
-        return [(int(self.ids[r]), float(scores[r])) for r in rows]
+        out: list[tuple[int, float, Optional[str]]] = []
+        seen: set[int] = set()
+        for i in top:
+            row = int(keep[i])
+            bulletin_id = int(self.ids[row])
+            if bulletin_id in seen:
+                continue
+            seen.add(bulletin_id)
+            passage = self.texts[row] if row < len(self.texts) else None
+            out.append((bulletin_id, float(scores[row]), passage))
+            if len(out) >= limit:
+                break
+        return out
+
+    def bulletin_count(self) -> int:
+        """Distinct bulletins held, as opposed to chunks."""
+        return len(set(self.ids.tolist())) if self.ids.size else 0
 
 
 _index = _Index()
@@ -345,7 +458,7 @@ _index = _Index()
 
 def search_vector(
     query_vector: np.ndarray, limit: Optional[int] = None, min_score: Optional[float] = None
-) -> list[tuple[int, float]]:
+) -> list[tuple[int, float, Optional[str]]]:
     """Closest bulletins to an already-embedded query, best first.
 
     Split out from `search` so a caller that also needs the query vector can
@@ -361,7 +474,7 @@ def search_vector(
 
 def search(
     query: str, limit: Optional[int] = None, min_score: Optional[float] = None
-) -> list[tuple[int, float]]:
+) -> list[tuple[int, float, Optional[str]]]:
     """Embed the query and return the closest bulletins above the threshold."""
     if not query or not query.strip():
         return []
@@ -384,22 +497,32 @@ def indexed_count() -> int:
         _index.load()
     except Exception as e:
         logger.warning(f"Could not load the semantic index: {e}")
+    return _index.bulletin_count()
+
+
+def chunk_count() -> int:
+    """How many passage vectors the loaded index holds."""
     return int(_index.matrix.shape[0]) if _index.matrix.size else 0
 
 
 def stored_counts() -> tuple[int, int]:
-    """(rows for the current model, rows for every model) in bulletin_embedding.
+    """(bulletins for the current model, bulletins for every model) in the table.
 
     The two differ when vectors were written under a different model name --
     after SEMANTIC_MODEL_PATH changes, say. Search filters on the current name,
     so those rows are invisible to it while still sitting in the table.
+
+    Counts distinct bulletins rather than rows, since a bulletin now owns one
+    row per chunk.
     """
     from enferno.admin.models import BulletinEmbedding
     from enferno.extensions import db
 
-    total = db.session.query(db.func.count(BulletinEmbedding.id)).scalar() or 0
+    total = (
+        db.session.query(db.func.count(db.distinct(BulletinEmbedding.bulletin_id))).scalar() or 0
+    )
     current = (
-        db.session.query(db.func.count(BulletinEmbedding.id))
+        db.session.query(db.func.count(db.distinct(BulletinEmbedding.bulletin_id)))
         .filter(BulletinEmbedding.model == model_name())
         .scalar()
         or 0

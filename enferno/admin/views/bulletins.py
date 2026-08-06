@@ -735,7 +735,9 @@ def api_bulletins_semantic() -> Response:
     if not ranked:
         return HTTPResponse.success(data=empty, message=NO_SEMANTIC_MATCHES)
 
-    by_id = {bid: score for bid, score in ranked}
+    # Each bulletin is scored by its best-matching passage, and that passage
+    # comes back with it -- no re-embedding at request time.
+    by_id = {bid: (score, passage) for bid, score, passage in ranked}
     # Everything bulletin_text() reads is loaded up front: without this the
     # page costs one query per relationship per result.
     bulletins = (
@@ -756,7 +758,7 @@ def api_bulletins_semantic() -> Response:
     # Rank first and cut to the page, then do the per-result work. Passages and
     # evidence are only ever computed for bulletins actually being returned.
     visible = [b for b in bulletins if current_user and current_user.can_access(b)]
-    visible.sort(key=lambda b: by_id.get(b.id, 0.0), reverse=True)
+    visible.sort(key=lambda b: by_id.get(b.id, (0.0, None))[0], reverse=True)
     visible = visible[:configured_limit]
 
     if not visible:
@@ -764,11 +766,20 @@ def api_bulletins_semantic() -> Response:
 
     terms = ss.query_terms(query)
     texts = [ss.bulletin_text(b) for b in visible]
-    passages = ss.best_passages(texts, query_vector)
+
+    # Rows indexed before passages were stored carry no chunk text. Fall back
+    # to picking a passage live so those results still explain themselves until
+    # `flask reindex-semantic --force` has run.
+    stale = [i for i, b in enumerate(visible) if by_id.get(b.id, (0.0, None))[1] is None]
+    if stale:
+        recovered = ss.best_passages([texts[i] for i in stale], query_vector)
+        for i, passage in zip(stale, recovered):
+            score, _ = by_id[visible[i].id]
+            by_id[visible[i].id] = (score, passage)
 
     items = []
-    for bulletin, text, passage in zip(visible, texts, passages):
-        score = by_id.get(bulletin.id, 0.0)
+    for bulletin, text in zip(visible, texts):
+        score, passage = by_id.get(bulletin.id, (0.0, None))
         items.append(
             {
                 "id": bulletin.id,

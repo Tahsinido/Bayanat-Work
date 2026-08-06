@@ -14,18 +14,23 @@ logger = get_logger()
 def index_bulletins(bulletins: Iterable, force: bool = False) -> dict:
     """Embed and store vectors for the given bulletins.
 
-    Returns counts of what happened: `written`, `up_to_date` (searchable text
-    unchanged since the stored vector was made, which makes re-running the
-    backfill cheap) and `empty` (nothing searchable to embed).
+    Returns counts of what happened: `written` and `chunks` (bulletins and
+    passage vectors stored), `up_to_date` (searchable text unchanged since the
+    stored vectors were made, which makes re-running the backfill cheap) and
+    `empty` (nothing searchable to embed).
 
-    The three are reported separately because they mean very different things
-    when a reindex writes nothing: `up_to_date` means the index is already
-    complete, `empty` means no bulletin produced any indexable text.
+    These are reported separately because they mean very different things when
+    a reindex writes nothing: `up_to_date` means the index is already complete,
+    `empty` means no bulletin produced any indexable text.
+
+    A bulletin is embedded as several passages, so its rows are replaced as a
+    set rather than updated in place.
     """
     from enferno.admin.models import BulletinEmbedding
 
     model = ss.model_name()
-    pending, rows = [], []
+    pending: list[str] = []
+    rows: list[tuple[int, str, list[str]]] = []
     up_to_date = 0
     empty = 0
 
@@ -35,31 +40,68 @@ def index_bulletins(bulletins: Iterable, force: bool = False) -> dict:
             empty += 1
             continue
         digest = ss.content_hash(text)
-        existing = BulletinEmbedding.query.filter_by(bulletin_id=bulletin.id).first()
-        if existing and not force and existing.content_hash == digest and existing.model == model:
+        existing = BulletinEmbedding.query.filter_by(bulletin_id=bulletin.id).all()
+        # Rows written before chunking have no chunk_text; treat them as stale
+        # so an upgrade rebuilds them instead of keeping truncated vectors.
+        if (
+            existing
+            and not force
+            and all(
+                r.content_hash == digest and r.model == model and r.chunk_text is not None
+                for r in existing
+            )
+        ):
             up_to_date += 1
             continue
-        pending.append(text)
-        rows.append((bulletin.id, digest, existing))
+
+        chunks = ss.bulletin_chunks(bulletin)
+        if not chunks:
+            empty += 1
+            continue
+        pending.extend(chunks)
+        rows.append((bulletin.id, digest, chunks))
 
     if not pending:
-        return {"written": 0, "up_to_date": up_to_date, "empty": empty}
+        return {"written": 0, "chunks": 0, "up_to_date": up_to_date, "empty": empty}
 
     vectors = ss.encode(pending)
 
+    # Clear the old passages in one statement, then insert the new set. Doing
+    # it per row would trip the (bulletin, model, chunk_index) constraint while
+    # both generations are still present.
+    stale_ids = [r[0] for r in rows]
+    BulletinEmbedding.query.filter(BulletinEmbedding.bulletin_id.in_(stale_ids)).delete(
+        synchronize_session=False
+    )
+    db.session.flush()
+
+    offset = 0
     written = 0
-    for (bulletin_id, digest, existing), vector in zip(rows, vectors):
-        record = existing or BulletinEmbedding(bulletin_id=bulletin_id)
-        record.model = model
-        record.dim = int(vector.shape[0])
-        record.vector = vector.astype("float32").tobytes()
-        record.content_hash = digest
-        db.session.add(record)
+    for bulletin_id, digest, chunks in rows:
+        for index, chunk in enumerate(chunks):
+            vector = vectors[offset + index]
+            db.session.add(
+                BulletinEmbedding(
+                    bulletin_id=bulletin_id,
+                    chunk_index=index,
+                    chunk_text=chunk,
+                    model=model,
+                    dim=int(vector.shape[0]),
+                    vector=vector.astype("float32").tobytes(),
+                    content_hash=digest,
+                )
+            )
+        offset += len(chunks)
         written += 1
 
     db.session.commit()
     ss.invalidate_index()
-    return {"written": written, "up_to_date": up_to_date, "empty": empty}
+    return {
+        "written": written,
+        "chunks": len(pending),
+        "up_to_date": up_to_date,
+        "empty": empty,
+    }
 
 
 def index_bulletin(bulletin, force: bool = False) -> bool:
@@ -84,6 +126,7 @@ def reindex_all(batch_size: int = 64, force: bool = False) -> dict:
 
     total = db.session.query(db.func.count(Bulletin.id)).scalar() or 0
     written = 0
+    chunks = 0
     up_to_date = 0
     empty = 0
     processed = 0
@@ -95,12 +138,14 @@ def reindex_all(batch_size: int = 64, force: bool = False) -> dict:
             break
         result = index_bulletins(batch, force=force)
         written += result["written"]
+        chunks += result["chunks"]
         up_to_date += result["up_to_date"]
         empty += result["empty"]
         processed += len(batch)
         logger.info(
-            f"Semantic index: {processed}/{total} processed, {written} written, "
-            f"{up_to_date} already current, {empty} with nothing to index"
+            f"Semantic index: {processed}/{total} processed, {written} written "
+            f"({chunks} passages), {up_to_date} already current, "
+            f"{empty} with nothing to index"
         )
 
     ss.invalidate_index()
@@ -108,6 +153,7 @@ def reindex_all(batch_size: int = 64, force: bool = False) -> dict:
         "total": total,
         "processed": processed,
         "written": written,
+        "chunks": chunks,
         "up_to_date": up_to_date,
         "empty": empty,
     }

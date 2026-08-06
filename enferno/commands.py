@@ -1186,7 +1186,7 @@ def reindex_semantic(force: bool, batch_size: int) -> None:
 
     click.echo(
         f"Done. {result['processed']} of {result['total']} bulletins processed, "
-        f"{result['written']} embeddings written, "
+        f"{result['written']} embedded as {result['chunks']} passages, "
         f"{result['up_to_date']} already current, "
         f"{result['empty']} with nothing to index."
     )
@@ -1194,7 +1194,7 @@ def reindex_semantic(force: bool, batch_size: int) -> None:
     # "0 written" on its own is ambiguous -- a complete index and a broken one
     # look identical -- so say which this was.
     current, stored_total = ss.stored_counts()
-    click.echo(f"Table now holds {current} vectors for model '{ss.model_name()}'.")
+    click.echo(f"Table now holds {current} bulletins for model '{ss.model_name()}'.")
     if stored_total > current:
         click.echo(
             f"Warning: {stored_total - current} more vectors are stored under a different "
@@ -1228,8 +1228,8 @@ def semantic_probe(query: str, limit: int) -> None:
     current, stored_total = ss.stored_counts()
 
     click.echo(f"Model:      {ss.model_name()}")
-    click.echo(f"Stored:     {current} vectors for this model ({stored_total} rows in total)")
-    click.echo(f"Loaded:     {loaded} vectors in the search index")
+    click.echo(f"Stored:     {current} bulletins for this model ({stored_total} in total)")
+    click.echo(f"Loaded:     {loaded} bulletins as {ss.chunk_count()} passages")
     click.echo(f"Threshold:  {threshold} (SEMANTIC_SEARCH_THRESHOLD)")
     click.echo("")
 
@@ -1243,11 +1243,14 @@ def semantic_probe(query: str, limit: int) -> None:
         return
 
     passing = 0
-    for bulletin_id, score in matches:
+    for bulletin_id, score, passage in matches:
         mark = "PASS" if score >= threshold else "cut "
         if score >= threshold:
             passing += 1
         click.echo(f"  [{mark}] bulletin {bulletin_id:<8} {score:.4f}  ({score * 100:.1f}%)")
+        if passage:
+            snippet = " ".join(passage.split())
+            click.echo(f"         matched on: {snippet[:120]}")
 
     click.echo("")
     click.echo(f"{passing} of {len(matches)} shown would survive the {threshold} threshold.")
