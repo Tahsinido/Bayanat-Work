@@ -54,6 +54,11 @@ services:
       dockerfile: ./flask/Dockerfile
       args:
         - ROLE=flask
+        # Semantic bulletin search. Adds ~2 GB (torch + transformers + model)
+        # and needs internet at BUILD time only; the running container is
+        # fully offline. Set WITH_SEMANTIC=false in the environment to build
+        # without it.
+        - WITH_SEMANTIC=${WITH_SEMANTIC:-true}
     volumes:
       - '${PWD}/backups:/app/backups/:rw'
       - '${MEDIA_PATH:-./enferno/media}:/app/enferno/media/:rw'
