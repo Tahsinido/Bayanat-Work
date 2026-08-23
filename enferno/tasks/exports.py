@@ -18,6 +18,7 @@ from enferno.utils.csv_utils import convert_list_attributes, escape_csv_formula_
 from enferno.utils.date_helper import DateHelper
 from enferno.utils.logging_utils import get_logger
 from enferno.utils.pdf_utils import PDFUtil
+from enferno.utils.watermark import stamp_copy
 
 logger = get_logger("celery.tasks.exports")
 
@@ -319,6 +320,15 @@ def generate_export_media(previous_result: int) -> t.id | Literal[False]:
                     )
                     clear_failed_export(export_request)
                     return False  # to stop chain
+
+            # Mark the copy now sitting in the export folder, never the source.
+            # An export archive leaves the system exactly like an approved
+            # download does, so it carries the same stamp -- otherwise
+            # requesting an export is simply the unmarked way to take a file.
+            #
+            # This runs after the copy in both branches, so the only path it can
+            # ever rewrite is the staged one.
+            stamp_copy(target_file, media.media_file, cfg.MEDIA_WATERMARK_TEXT)
 
             time.sleep(0.05)
     return export_request.id

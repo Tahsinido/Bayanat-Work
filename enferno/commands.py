@@ -1053,8 +1053,15 @@ def copy_media_files(bulletins, output_dir):
     """Copy media files for exported bulletins to the output directory.
 
     Reads FILESYSTEM_LOCAL from app config to decide between local copy and S3 download.
+
+    Each copy is stamped with the organisation name once it is in the output
+    directory. This export is destined to be published, so an unmarked file here
+    would travel further than any download does. Only the copy is rewritten --
+    the stored original is read and left alone.
     """
     import boto3
+
+    from enferno.utils.watermark import stamp_copy
 
     cfg = current_app.config
     use_s3 = not cfg.get("FILESYSTEM_LOCAL")
@@ -1077,10 +1084,12 @@ def copy_media_files(bulletins, output_dir):
             if media.deleted or not media.media_file:
                 continue
             dest = dest_dir / media.media_file
+            staged = False
             if use_s3:
                 try:
                     s3.download_file(cfg["S3_BUCKET"], media.media_file, str(dest))
                     copied += 1
+                    staged = True
                 except Exception:
                     logger.warning(
                         "S3 download failed: %s (bulletin %d)", media.media_file, bulletin.id
@@ -1091,9 +1100,14 @@ def copy_media_files(bulletins, output_dir):
                 if src.exists():
                     shutil.copy2(src, dest)
                     copied += 1
+                    staged = True
                 else:
                     logger.warning("Media file not found: %s (bulletin %d)", src, bulletin.id)
                     missing += 1
+
+            # Only ever the staged copy in dest_dir, never MEDIA_DIR.
+            if staged:
+                stamp_copy(str(dest), media.media_file, cfg.get("MEDIA_WATERMARK_TEXT"))
 
     return copied, missing
 

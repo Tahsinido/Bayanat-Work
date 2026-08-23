@@ -59,12 +59,15 @@ def _local_file_missing(media: Media) -> bool:
 def _serve(media: Media) -> Response:
     """Hand over the file itself.
 
-    Local storage streams from disk; S3 hands back a short-lived signed URL for
-    the browser to follow, since the file never passes through this process.
-
     Images and PDFs are stamped with the organisation name on the way out. The
     stored file is left untouched, so its hash still attests to what was
-    collected -- only the copy that leaves carries the mark.
+    collected -- only the copy that leaves carries the mark. The stamp is the
+    organisation name alone: no user name, no date.
+
+    Local storage reads from disk. On S3, anything stampable is pulled through
+    this process so the mark can be applied; only formats that are never stamped
+    (video, audio) are released as a short-lived signed URL straight from the
+    bucket.
     """
     from flask import current_app, send_file
 
@@ -101,10 +104,35 @@ def _serve(media: Media) -> Response:
         aws_secret_access_key=current_app.config["AWS_SECRET_ACCESS_KEY"],
         region_name=current_app.config["AWS_REGION"],
     )
+    bucket = current_app.config["S3_BUCKET"]
+
+    # A presigned URL points at the stored object, so the browser would collect
+    # the file without ever passing through the stamp. For formats that can be
+    # marked, pull the bytes through this process instead and hand over the
+    # stamped copy; the stored object is only ever read.
+    watermark = current_app.config.get("MEDIA_WATERMARK_TEXT")
+    if watermark and can_stamp(media.media_file):
+        try:
+            obj = s3.get_object(Bucket=bucket, Key=media.media_file)
+            data = stamp(obj["Body"].read(), media.media_file, watermark)
+            return send_file(
+                io.BytesIO(data),
+                as_attachment=True,
+                download_name=media.media_file,
+            )
+        except Exception as e:
+            # Falling through to a presigned URL here would quietly hand over an
+            # unmarked file, which is the one outcome this branch exists to
+            # prevent. Refuse instead; the code is not spent on a failed fetch.
+            logger.error(f"Could not stamp S3 object {media.media_file}: {e}", exc_info=True)
+            return HTTPResponse.error("The file could not be prepared for download", status=500)
+
+    # Video and audio are not stamped anywhere, so there is nothing to protect
+    # by streaming them through this process.
     url = s3.generate_presigned_url(
         "get_object",
         Params={
-            "Bucket": current_app.config["S3_BUCKET"],
+            "Bucket": bucket,
             "Key": media.media_file,
             "ResponseContentDisposition": f'attachment; filename="{media.media_file}"',
         },

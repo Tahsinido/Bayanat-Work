@@ -152,6 +152,46 @@ def _stamp_pdf(data: bytes, text: str) -> bytes:
         doc.close()
 
 
+def stamp_copy(path: str, filename: Optional[str] = None, text: Optional[str] = None) -> bool:
+    """Stamp a file in place, for files that are already a copy.
+
+    Only ever call this on a copy that is on its way out -- an export staging
+    file, a temporary download. It rewrites whatever path it is given, so
+    pointing it at the stored original would destroy the very thing the stamp
+    exists to protect.
+
+    `filename` decides the format when the copy has been given a working name;
+    it defaults to the path itself.
+
+    Returns True when the file was rewritten. Like stamp(), it never raises: a
+    file that cannot be marked is left as it is rather than failing the export
+    that contains it.
+    """
+    if text is None:
+        from flask import current_app
+
+        text = current_app.config.get("MEDIA_WATERMARK_TEXT")
+    if not text or not str(text).strip():
+        return False
+
+    name = filename or os.path.basename(path)
+    if not can_stamp(name):
+        return False
+
+    try:
+        with open(path, "rb") as f:
+            original = f.read()
+        stamped = stamp(original, name, text)
+        if stamped is original or stamped == original:
+            return False
+        with open(path, "wb") as f:
+            f.write(stamped)
+        return True
+    except Exception as e:
+        logger.error(f"Could not watermark the copy at {path}: {e}", exc_info=True)
+        return False
+
+
 def stamp(data: bytes, filename: str, text: Optional[str]) -> bytes:
     """Return the file with the stamp applied, or unchanged if it cannot be.
 
