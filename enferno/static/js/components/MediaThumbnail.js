@@ -164,7 +164,15 @@ const MediaThumbnail = Vue.defineComponent({
         }
         pdfjsLib.GlobalWorkerOptions.workerSrc = '/static/js/pdf.js/pdf.worker.min.mjs';
 
-        const pdf = await pdfjsLib.getDocument(this.s3url).promise;
+        // Read through the permission-checked proxy, not the presigned S3 URL.
+        // A presigned link carries no authentication and can be forwarded, so
+        // pointing PDF.js at it would expose the document at an effectively
+        // public URL for the life of the signature. Fall back to s3url only
+        // when there is no media id to proxy by (files mid-upload).
+        const pdfSource = this.media?.id
+          ? `/admin/api/media/${this.media.id}/proxy`
+          : this.s3url;
+        const pdf = await pdfjsLib.getDocument(pdfSource).promise;
         const page = await pdf.getPage(1);
 
         const THUMB_WIDTH = 240;

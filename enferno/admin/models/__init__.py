@@ -17,7 +17,12 @@ from .DynamicFormHistory import DynamicFormHistory
 from .ClaimedViolation import ClaimedViolation
 from .Country import Country
 from .Dialect import Dialect
+from .DownloadRequest import DownloadRequest
 from .Ethnography import Ethnography
+from .Evidence import Evidence
+from .EvidenceCustody import EvidenceCustody
+from .EvidenceHistory import EvidenceHistory
+from .Eyewitness import Eyewitness
 from .IDNumberType import IDNumberType
 from .Event import Event
 from .Eventtype import Eventtype

@@ -8,7 +8,10 @@ from enferno.extensions import db
 from enferno.utils.base import BaseMixin
 from flask import current_app
 from sqlalchemy import select, func, case, and_
-from enferno.utils.notification_config import ALWAYS_ON_SECURITY_EVENTS
+from enferno.utils.notification_config import (
+    ALWAYS_ON_SECURITY_EVENTS,
+    NOTIFICATIONS_DEFAULT_CONFIG,
+)
 
 NotificationEvent = Constants.NotificationEvent
 NotificationCategories = Constants.NotificationCategories
@@ -214,10 +217,18 @@ def get_notification_config(event):
         event = event.upper()
 
     # Get dynamic notifications config from Flask Config (includes config.json values)
-    notifications_config = Config.get("NOTIFICATIONS")
+    notifications_config = Config.get("NOTIFICATIONS") or {}
 
-    # Check always-on security events first, then configurable events
-    config = ALWAYS_ON_SECURITY_EVENTS.get(event) or notifications_config.get(event)
+    # Check always-on security events first, then configurable events. An event
+    # added after config.json was last written is absent there, so fall back to
+    # the shipped defaults rather than returning None -- otherwise every caller
+    # of a newly introduced event raises AttributeError on an existing install.
+    config = (
+        ALWAYS_ON_SECURITY_EVENTS.get(event)
+        or notifications_config.get(event)
+        or NOTIFICATIONS_DEFAULT_CONFIG.get(event)
+        or {}
+    )
 
     return {
         "enabled": config.get("in_app_enabled", True),

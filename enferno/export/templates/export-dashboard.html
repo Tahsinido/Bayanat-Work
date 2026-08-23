@@ -95,6 +95,15 @@
     </v-main>
 
 {% include 'export_drawer.html' %}
+
+    <!-- The approval code, shown once. Lives at app level so closing the
+         drawer cannot take it off screen before it has been noted. -->
+    <issued-code-dialog
+            v-model="issuedCodeOpen"
+            :code="issuedCode"
+            :recipient="issuedCodeFor"
+    ></issued-code-dialog>
+
     <v-overlay v-model="loading">
     </v-overlay>
 
@@ -117,14 +126,16 @@
     <script src="/static/js/components/InlineMediaRenderer.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/ImageViewer.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/PdfViewer.js?v={{ config.VERSION }}"></script>
-    <script src="/static/js/components/NativePdfViewer.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/DocxViewer.js?v={{ config.VERSION }}"></script>
 
     <script src="/static/js/components/BulletinResult.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/ActorResult.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/IncidentResult.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DownloadCodeDialog.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/IssuedCodeDialog.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/ExportDownload.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/MissingPersonCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DownloadRequestButton.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/MediaCard.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/MediaThumbnail.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/RelatedIncidentsCard.js?v={{ config.VERSION }}"></script>
@@ -155,6 +166,10 @@
                 drawer: drawer,
                 exportDrawer: false,
                 exportLoader: true,
+                // Shown once, right after an approval mints the code.
+                issuedCodeOpen: false,
+                issuedCode: '',
+                issuedCodeFor: '',
                 preview: false,
                 pitem: null,
                 eitem: {},
@@ -244,7 +259,18 @@
                         // close drawer
                         this.exportDrawer = false;
                         this.refresh();
-                        this.showSnack(res.data);
+
+                        // The code comes back exactly once. Show it before
+                        // anything else can navigate away from it.
+                        const code = res.data?.code;
+                        if (code) {
+                            this.issuedCode = code;
+                            this.issuedCodeFor = this.eitem?.requester?.name
+                                || this.eitem?.requester?.username || '';
+                            this.issuedCodeOpen = true;
+                        } else {
+                            this.showSnack(res.data);
+                        }
 
                     }).catch(error => {
 
@@ -327,6 +353,8 @@
         });
 
         app.component('ExportDownload', ExportDownload);
+        app.component('DownloadCodeDialog', DownloadCodeDialog);
+        app.component('IssuedCodeDialog', IssuedCodeDialog);
         app.component('PreviewCard', PreviewCard);
         app.component('ExportCard', ExportCard);
         app.component('BulletinCard', BulletinCard);
@@ -342,6 +370,7 @@
         app.component('RelatedIncidentsCard', RelatedIncidentsCard);
         app.component('RelatedActorsCard', RelatedActorsCard);
         app.component('RelatedBulletinsCard', RelatedBulletinsCard);
+        app.component('DownloadRequestButton', DownloadRequestButton);
         app.component('MediaCard', MediaCard);
         app.component('MediaThumbnail', MediaThumbnail);
         app.component('MediaGrid', MediaGrid);
@@ -352,7 +381,6 @@
         app.component('InlineMediaRenderer', InlineMediaRenderer);
         app.component('ImageViewer', ImageViewer);
         app.component('PdfViewer', PdfViewer);
-        app.component('NativePdfViewer', NativePdfViewer);
         app.component('DocxViewer', DocxViewer);
 
         app.use(router).use(vuetify);

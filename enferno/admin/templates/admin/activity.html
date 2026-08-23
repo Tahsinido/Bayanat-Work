@@ -103,6 +103,24 @@
                 ${item.subject.id}
               </v-btn>
 
+              <!-- Gated file downloads: show the file, not the request id.
+                   "download_request 41" answers nothing months later. -->
+              <div v-else-if="item.subject.class == 'download_request'" class="mx-2 py-1">
+                <div class="d-flex align-center ga-2">
+                  <v-icon size="small" color="grey-darken-2">mdi-file-lock-outline</v-icon>
+                  <span class="text-body-2">${ item.subject.title || item.subject.filename || ('#' + item.subject.media_id) }</span>
+                </div>
+                <div v-if="item.subject.title && item.subject.filename"
+                     class="text-caption text-disabled">${ item.subject.filename }</div>
+                <v-btn v-if="item.subject.parent_id"
+                       size="x-small" variant="plain" class="px-0 mt-1"
+                       :prepend-icon="item.subject.parent_class == 'actor'
+                          ? 'mdi-account-multiple' : 'mdi-file-document-multiple'"
+                       @click="previewItem('/admin/api/' + item.subject.parent_class + '/' + item.subject.parent_id + '?mode=3')">
+                  ${ item.subject.parent_class } ${ item.subject.parent_id }
+                </v-btn>
+              </div>
+
               <v-chip
                 v-else
                 label
@@ -172,6 +190,8 @@
     <script src="/static/js/components/ActorCard.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/IncidentCard.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/EventCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DownloadCodeDialog.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DownloadRequestButton.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/MediaCard.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/MediaThumbnail.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/PreviewCard.js?v={{ config.VERSION }}"></script>
@@ -196,7 +216,6 @@
 
     <script src="/static/js/components/MediaGrid.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/PdfViewer.js?v={{ config.VERSION }}"></script>
-    <script src="/static/js/components/NativePdfViewer.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/DocxViewer.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/ImageViewer.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/InlineMediaRenderer.js?v={{ config.VERSION }}"></script>
@@ -428,6 +447,8 @@
   app.component('ActorCard', ActorCard);
   app.component('IncidentCard', IncidentCard);
   app.component('EventCard', EventCard);
+  app.component('DownloadCodeDialog', DownloadCodeDialog);
+  app.component('DownloadRequestButton', DownloadRequestButton);
   app.component('MediaCard', MediaCard);
   app.component('MediaThumbnail', MediaThumbnail);
   app.component('PreviewCard', PreviewCard);
@@ -438,7 +459,6 @@
 
   app.component('MediaGrid', MediaGrid);
   app.component('PdfViewer', PdfViewer);
-  app.component('NativePdfViewer', NativePdfViewer);
   app.component('DocxViewer', DocxViewer);
   app.component('ImageViewer', ImageViewer);
   app.component('InlineMediaRenderer', InlineMediaRenderer);

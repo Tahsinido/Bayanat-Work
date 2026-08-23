@@ -1,0 +1,1075 @@
+{% extends 'layout.html' %}
+
+{# Styles go in the head block, not inside `content`. `content` is rendered
+   inside #app, which is Vue's mount point, and Vue's template compiler drops
+   <style> elements when it re-renders that subtree -- a stylesheet placed
+   there never reaches the page at all. #}
+{% block css %}
+    <style>
+        /* Ruled grid on the record list. The colour comes from Vuetify's own
+           border token, so the lines follow the light and dark themes instead
+           of being pinned to one of them. */
+        #evidence-dt table {
+            border-collapse: collapse;
+        }
+
+        #evidence-dt th,
+        #evidence-dt td {
+            border: 1px solid rgba(var(--v-border-color), 0.28);
+        }
+
+        #evidence-dt thead th {
+            background: rgba(var(--v-border-color), 0.05);
+            font-weight: 600;
+        }
+
+        /* Key/value and history lists are laid out with grid instead of table
+           markup, because this template is parsed from the DOM (see notes in
+           the drawer below). The cell borders are drawn here so they read as
+           the same ruled table as the list, despite not being table tags. */
+        .evidence-kv,
+        .evidence-history {
+            border: 1px solid rgba(var(--v-border-color), 0.28);
+        }
+
+        .evidence-kv__row,
+        .evidence-history__row {
+            display: grid;
+            align-items: stretch;
+        }
+
+        .evidence-kv__row + .evidence-kv__row,
+        .evidence-history__row + .evidence-history__row {
+            border-top: 1px solid rgba(var(--v-border-color), 0.28);
+        }
+
+        .evidence-kv__row > *,
+        .evidence-history__row > * {
+            padding: 6px 10px;
+            min-width: 0;
+            word-break: break-word;
+        }
+
+        /* Vertical rules between cells, without a trailing line on the last. */
+        .evidence-kv__row > * + *,
+        .evidence-history__row > * + * {
+            border-left: 1px solid rgba(var(--v-border-color), 0.28);
+        }
+
+        .evidence-kv__row {
+            grid-template-columns: 210px minmax(0, 1fr);
+        }
+
+        .evidence-history__row {
+            grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 0.8fr);
+        }
+
+        .evidence-kv__key {
+            background: rgba(var(--v-border-color), 0.04);
+        }
+
+        .evidence-history__row:first-child {
+            background: rgba(var(--v-border-color), 0.05);
+            font-weight: 600;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <v-main>
+        {% include 'admin/partials/evidence_advsearch.html' %}
+        <v-container fluid>
+            <v-card>
+                <v-card-text>
+
+                    <v-data-table-server
+                            fixed-header
+                            height="calc(100vh - 330px)"
+                            id="evidence-dt"
+                            :headers="headers"
+                            :items="items"
+                            :loading="loading"
+                            :items-length="itemsLength"
+                            item-value="id"
+                            hover
+                            @click:row="rowClick"
+                            class="elevation-1"
+                            hide-default-footer
+                    >
+
+                        <template #top>
+                            <v-sheet class="ma-3 d-flex align-center flex-wrap ga-2">
+                                <v-text-field
+                                        density="compact" variant="outlined" hide-details
+                                        style="max-width: 320px;"
+                                        v-model.trim="q.text"
+                                        @keydown.enter="search"
+                                        prepend-inner-icon="mdi-magnify"
+                                        label="{{ _('Search evidence') }}"
+                                ></v-text-field>
+
+                                <v-select density="compact" variant="outlined" hide-details
+                                          style="max-width: 190px;" clearable
+                                          v-model="q.evidence_type" :items="evidenceTypes"
+                                          @update:model-value="search"
+                                          label="{{ _('Type') }}"></v-select>
+
+                                <v-select density="compact" variant="outlined" hide-details
+                                          style="max-width: 175px;" clearable
+                                          v-model="q.status" :items="statuses"
+                                          @update:model-value="search"
+                                          label="{{ _('Status') }}"></v-select>
+
+                                <v-select density="compact" variant="outlined" hide-details
+                                          style="max-width: 190px;" clearable
+                                          v-model="q.confidentiality" :items="confidentialities"
+                                          @update:model-value="search"
+                                          label="{{ _('Confidentiality') }}"></v-select>
+
+                                <v-btn variant="tonal" prepend-icon="mdi-tune"
+                                       @click="advSearchExpand = true">
+                                    {{ _('Advanced') }}
+                                    <v-chip v-if="activeFilterCount" size="x-small" class="ml-2">
+                                        ${ activeFilterCount }
+                                    </v-chip>
+                                </v-btn>
+
+                                <v-btn variant="text" icon="mdi-close" @click="resetSearch"></v-btn>
+                                <v-spacer></v-spacer>
+
+                                {% if current_user.roles_in(['Admin','Mod','DA']) %}
+                                    <v-btn color="primary" variant="elevated" @click="newItem"
+                                           prepend-icon="mdi-plus"
+                                    >{{ _('New Evidence') }}</v-btn>
+                                {% endif %}
+                            </v-sheet>
+                        </template>
+
+                        <template #['item.evidence_number']="{ item }">
+                            <span class="font-weight-medium">${ item.evidence_number }</span>
+                        </template>
+
+                        <template #['item.confidentiality']="{ item }">
+                            <v-chip v-if="item.confidentiality" size="small" variant="flat"
+                                    :color="confColor(item.confidentiality)">
+                                ${ item.confidentiality }
+                            </v-chip>
+                            <span v-else class="text-disabled">&mdash;</span>
+                        </template>
+
+                        <template #['item.status']="{ item }">
+                            <v-chip size="small" variant="tonal" :color="statusColor(item.status)">
+                                ${ item.status || '—' }
+                            </v-chip>
+                        </template>
+
+                        <template #['item.bulletins']="{ item }">
+                            <span v-if="item.bulletins && item.bulletins.length"
+                                  class="text-caption">${ item.bulletins.length }
+                                {{ _('linked') }}</span>
+                            <span v-else class="text-disabled">&mdash;</span>
+                        </template>
+
+                        <template #['item.restricted']="{ item }">
+                            <v-tooltip v-if="item.restricted" location="top"
+                                       text="{{ _('Access restricted to specific groups') }}">
+                                <template #activator="{ props }">
+                                    <v-icon v-bind="props" size="small" color="grey">mdi-shield-lock</v-icon>
+                                </template>
+                            </v-tooltip>
+                        </template>
+
+                        <template #['item.date_collected']="{ item }">
+                            <span class="text-caption">${ item.date_collected || '—' }</span>
+                        </template>
+
+                        <template v-slot:no-data></template>
+                    </v-data-table-server>
+
+                    <div class="d-flex align-center pa-3">
+                        <span class="text-caption text-disabled">${ itemsLength }
+                            {{ _('evidence records') }}</span>
+                        <v-spacer></v-spacer>
+                        <v-pagination v-model="page" :length="pageCount" density="compact"
+                                      @update:model-value="refresh"></v-pagination>
+                    </div>
+
+                </v-card-text>
+            </v-card>
+        </v-container>
+    </v-main>
+
+    <!-- ===================== record drawer ===================== -->
+    <v-navigation-drawer v-model="drawerOpen" location="right" temporary width="820">
+        <v-toolbar density="compact" color="primary">
+            <v-toolbar-title class="text-truncate">
+                ${ current.evidence_number || "{{ _('Evidence') }}" }
+            </v-toolbar-title>
+            <v-spacer></v-spacer>
+            {% if current_user.roles_in(['Admin','Mod','DA']) %}
+                <v-btn size="small" variant="text" icon="mdi-pencil" @click="editCurrent"></v-btn>
+            {% endif %}
+            <v-btn size="small" variant="text" icon="mdi-close" @click="drawerOpen = false"></v-btn>
+        </v-toolbar>
+
+        <div v-if="detailLoading" class="pa-8 text-center">
+            <v-progress-circular indeterminate color="primary"></v-progress-circular>
+        </div>
+
+        <v-card v-else flat>
+            <v-tabs v-model="tab" density="compact">
+                <v-tab value="info">{{ _('Evidence Information') }}</v-tab>
+                <v-tab value="media">{{ _('Files / Media') }}
+                    <v-chip size="x-small" class="ml-1">${ (current.medias || []).length }</v-chip>
+                </v-tab>
+                <v-tab value="custody">{{ _('Chain of Custody') }}
+                    <v-chip size="x-small" class="ml-1">${ (current.custody || []).length }</v-chip>
+                </v-tab>
+                <v-tab value="history">{{ _('History') }}</v-tab>
+            </v-tabs>
+
+            <v-card-text>
+                <v-window v-model="tab">
+
+                    <!-- ---------------- metadata ---------------- -->
+                    <v-window-item value="info">
+                        <div v-for="group in infoGroups" :key="group.title" class="mb-5">
+                            <h4 class="text-subtitle-2 mb-2">${ group.title }</h4>
+                            <!-- Plain divs, not <v-table>/<tr>/<td>: this template is parsed
+                                 from the DOM, and the HTML parser discards table tags that are
+                                 not inside a real <table>, taking their v-for with them. -->
+                            <div class="evidence-kv">
+                                <div v-for="row in group.rows" :key="row.label" class="evidence-kv__row">
+                                    <div class="text-caption text-medium-emphasis evidence-kv__key">
+                                        ${ row.label }
+                                    </div>
+                                    <div class="text-body-2">
+                                        <span v-if="row.value">${ row.value }</span>
+                                        <span v-else class="text-disabled">&mdash;</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-if="(current.roles || []).length" class="mb-4">
+                            <h4 class="text-subtitle-2 mb-2">{{ _('Access Groups') }}</h4>
+                            <v-chip v-for="r in current.roles" :key="r.id" size="small"
+                                    class="mr-1" :color="r.color || 'grey'" variant="flat">
+                                ${ r.name }
+                            </v-chip>
+                        </div>
+                    </v-window-item>
+
+                    <!-- ---------------- media ---------------- -->
+                    <v-window-item value="media">
+                        <p class="text-caption text-medium-emphasis mb-3">
+                            {{ _('Files attached to this evidence record. Previews open inside Bayanat; taking a copy goes through the download approval process.') }}
+                        </p>
+
+                        <!-- The renderer has to be mounted for a click on a
+                             thumbnail to show anything: handleExpandedMedia only
+                             records which item is expanded, and this is what
+                             reads that state and draws it. Same wiring as
+                             BulletinCard. -->
+                        <inline-media-renderer
+                                :renderer-id="mediaRendererId"
+                                :media="expandedByRenderer?.[mediaRendererId]?.media"
+                                :media-type="expandedByRenderer?.[mediaRendererId]?.mediaType"
+                                :initial-orientation="expandedByRenderer?.[mediaRendererId]?.media?.orientation || 0"
+                                @ready="onMediaRendererReady"
+                                @fullscreen="handleFullscreen(mediaRendererId)"
+                                @close="closeExpandedMedia(mediaRendererId)"
+                        ></inline-media-renderer>
+
+                        <!-- Attaching goes through two calls: the bytes are stored
+                             first, then registered as media on this record. Doing
+                             both here means a file is never left uploaded but
+                             unattached. -->
+                        <div v-if="current.id" class="d-flex align-start ga-2 mb-4">
+                            <v-file-input
+                                    v-model="mediaUploads"
+                                    multiple
+                                    chips
+                                    show-size
+                                    density="compact"
+                                    variant="outlined"
+                                    hide-details
+                                    prepend-icon="mdi-paperclip"
+                                    :disabled="uploadingMedia"
+                                    :accept="mediaAccept"
+                                    label="{{ _('Images, video, audio, PDF or Word') }}"
+                            ></v-file-input>
+                            <v-btn color="primary"
+                                   :loading="uploadingMedia"
+                                   :disabled="!selectedUploadCount"
+                                   @click="attachFiles">
+                                {{ _('Attach') }}
+                            </v-btn>
+                        </div>
+                        <v-progress-linear v-if="uploadingMedia" indeterminate
+                                           class="mb-3"></v-progress-linear>
+
+                        <media-grid v-if="(current.medias || []).length"
+                                    prioritize-videos
+                                    :medias="current.medias"
+                                    @media-click="handleExpandedMedia({ rendererId: mediaRendererId, ...$event })"
+                        ></media-grid>
+                        <v-alert v-else type="info" variant="tonal" density="compact">
+                            {{ _('No files attached to this evidence record yet.') }}
+                        </v-alert>
+
+                        <!-- Unlinking is offered as a list rather than on the
+                             thumbnails: a misplaced click on a grid tile should
+                             open a file, never detach it. -->
+                        <v-list v-if="(current.medias || []).length" density="compact" class="mt-3">
+                            <v-list-item v-for="m in current.medias" :key="m.id">
+                                <template #prepend>
+                                    <v-icon :icon="mediaIcon(m)" class="mr-2"></v-icon>
+                                </template>
+                                <v-list-item-title>${ m.media_number || m.filename }</v-list-item-title>
+                                <v-list-item-subtitle>${ m.title || m.filename }</v-list-item-subtitle>
+                                <template #append>
+                                    <v-btn icon="mdi-link-off"
+                                           size="small"
+                                           variant="text"
+                                           :title="'{{ _('Unlink this file') }}'"
+                                           @click.stop="detachMedia(m)"></v-btn>
+                                </template>
+                            </v-list-item>
+                        </v-list>
+                    </v-window-item>
+
+                    <!-- ---------------- custody ---------------- -->
+                    <v-window-item value="custody">
+                        <div class="d-flex align-center mb-3">
+                            <p class="text-caption text-medium-emphasis mb-0">
+                                {{ _('Append-only. Entries cannot be edited or removed — correct a mistake by adding a Correction entry.') }}
+                            </p>
+                            <v-spacer></v-spacer>
+                            {% if current_user.roles_in(['Admin','Mod','DA']) %}
+                                <v-btn size="small" variant="tonal" prepend-icon="mdi-plus"
+                                       @click="custodyDialog = true">{{ _('Add entry') }}</v-btn>
+                            {% endif %}
+                        </div>
+
+                        <v-timeline v-if="(current.custody || []).length" side="end" density="compact">
+                            <v-timeline-item v-for="c in current.custody" :key="c.id"
+                                             size="x-small" :dot-color="custodyColor(c.action)">
+                                <div class="d-flex align-center ga-2">
+                                    <strong class="text-body-2">${ c.action }</strong>
+                                    <span class="text-caption text-disabled">${ c.occurred_at || c.created_at }</span>
+                                </div>
+                                <div class="text-body-2">
+                                    <span v-if="c.handled_by">${ c.handled_by }</span>
+                                    <span v-if="c.received_from"> &larr; ${ c.received_from }</span>
+                                    <span v-if="c.transferred_to"> &rarr; ${ c.transferred_to }</span>
+                                </div>
+                                <div v-if="c.location || c.storage_location" class="text-caption text-disabled">
+                                    ${ c.location || c.storage_location }
+                                </div>
+                                <div v-if="c.purpose" class="text-caption">${ c.purpose }</div>
+                                <div v-if="c.condition" class="text-caption">
+                                    {{ _('Condition') }}: ${ c.condition }
+                                </div>
+                                <div v-if="c.reference" class="text-caption text-disabled">
+                                    {{ _('Ref') }}: ${ c.reference }
+                                </div>
+                                <div v-if="c.document_media" class="text-caption d-flex align-center ga-1">
+                                    <v-icon size="small" icon="mdi-paperclip"></v-icon>
+                                    <span>${ c.document_media.title || c.document_media.filename }</span>
+                                </div>
+                                <div class="text-caption text-disabled">
+                                    {{ _('recorded by') }}
+                                    ${ c.recorded_by ? (c.recorded_by.name || c.recorded_by.username) : '—' }
+                                </div>
+                            </v-timeline-item>
+                        </v-timeline>
+                        <v-alert v-else type="warning" variant="tonal" density="compact">
+                            {{ _('No chain-of-custody entries recorded for this evidence yet.') }}
+                        </v-alert>
+                    </v-window-item>
+
+                    <!-- ---------------- history ---------------- -->
+                    <v-window-item value="history">
+                        <!-- Divs rather than table tags -- see the note on the metadata list above. -->
+                        <div v-if="history.length" class="evidence-history">
+                            <div class="evidence-history__row text-caption text-medium-emphasis">
+                                <div>{{ _('When') }}</div>
+                                <div>{{ _('User') }}</div>
+                                <div>{{ _('Status') }}</div>
+                            </div>
+                            <div v-for="h in history" :key="h.id" class="evidence-history__row text-caption">
+                                <div>${ h.created_at }</div>
+                                <div>${ h.user ? (h.user.name || h.user.username) : '—' }</div>
+                                <div>${ h.data ? h.data.status : '—' }</div>
+                            </div>
+                        </div>
+                        <v-alert v-else type="info" variant="tonal" density="compact">
+                            {{ _('No revisions recorded.') }}
+                        </v-alert>
+                    </v-window-item>
+
+                </v-window>
+            </v-card-text>
+        </v-card>
+    </v-navigation-drawer>
+
+    <!-- ===================== create / edit ===================== -->
+    <v-dialog v-model="editDialog" max-width="900" scrollable>
+        <v-card :loading="saving">
+            <v-card-title>
+                ${ edited.id ? "{{ _('Edit Evidence') }}" : "{{ _('New Evidence') }}" }
+                <span v-if="edited.evidence_number" class="text-caption text-disabled ml-2">
+                    ${ edited.evidence_number }</span>
+            </v-card-title>
+            <v-card-text>
+                <v-alert v-if="!edited.id" type="info" variant="tonal" density="compact" class="mb-4">
+                    {{ _('The evidence identifier is assigned automatically on save and cannot be chosen.') }}
+                </v-alert>
+
+                <v-row>
+                    <v-col cols="12" md="6">
+                        <!-- Typed in by hand: this is the team's own case
+                             reference, not something Bayanat assigns. -->
+                        <v-text-field v-bind="inputProps" v-model="edited.case_code"
+                                      label="{{ _('Case code') }}"
+                                      placeholder="{{ _('e.g. CASE-2026-014') }}"
+                                      persistent-placeholder></v-text-field>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-select v-bind="inputProps" v-model="edited.evidence_type"
+                                  :items="evidenceTypes" label="{{ _('Evidence type') }}"></v-select>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-select v-bind="inputProps" v-model="edited.status"
+                                  :items="statuses" label="{{ _('Status') }}"></v-select>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-select v-bind="inputProps" v-model="edited.confidentiality"
+                                  :items="confidentialities"
+                                  label="{{ _('Confidentiality / sensitivity') }}"></v-select>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-text-field v-bind="inputProps" v-model="edited.collector"
+                                      label="{{ _('Collector / person who obtained it') }}"></v-text-field>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-text-field v-bind="inputProps" type="datetime-local"
+                                      v-model="edited.evidence_date"
+                                      label="{{ _('Date of evidence') }}"></v-text-field>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-text-field v-bind="inputProps" type="datetime-local"
+                                      v-model="edited.date_collected"
+                                      label="{{ _('Date collected / received') }}"></v-text-field>
+                    </v-col>
+
+                    <v-col cols="12">
+                        <v-textarea v-bind="inputProps" rows="2" v-model="edited.description"
+                                    label="{{ _('Evidence description') }}"></v-textarea>
+                    </v-col>
+                    <v-col cols="12">
+                        <v-textarea v-bind="inputProps" rows="2" v-model="edited.content_summary"
+                                    label="{{ _('Evidence content / summary') }}"></v-textarea>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-textarea v-bind="inputProps" rows="2" v-model="edited.source_information"
+                                    label="{{ _('Source information') }}"></v-textarea>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-textarea v-bind="inputProps" rows="2" v-model="edited.ownership_information"
+                                    label="{{ _('Ownership / source') }}"></v-textarea>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-textarea v-bind="inputProps" rows="2" v-model="edited.collection_information"
+                                    label="{{ _('Collection information') }}"></v-textarea>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-textarea v-bind="inputProps" rows="2" v-model="edited.relevance"
+                                    label="{{ _('Relevance / evidentiary value') }}"></v-textarea>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-textarea v-bind="inputProps" rows="2" v-model="edited.verification_information"
+                                    label="{{ _('Verification information') }}"></v-textarea>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-text-field v-bind="inputProps" v-model="edited.consent_status"
+                                      label="{{ _('Consent status') }}"></v-text-field>
+                    </v-col>
+                    <v-col cols="12">
+                        <v-textarea v-bind="inputProps" rows="2" v-model="edited.consent_information"
+                                    label="{{ _('Consent information') }}"></v-textarea>
+                    </v-col>
+                    <v-col cols="12">
+                        <v-textarea v-bind="inputProps" rows="2" v-model="edited.notes"
+                                    label="{{ _('Notes') }}"></v-textarea>
+                    </v-col>
+                </v-row>
+            </v-card-text>
+            <v-card-actions>
+                <v-spacer></v-spacer>
+                <v-btn variant="text" @click="editDialog = false">{{ _('Cancel') }}</v-btn>
+                <v-btn color="primary" variant="flat" :loading="saving"
+                       @click="saveItem">{{ _('Save') }}</v-btn>
+            </v-card-actions>
+        </v-card>
+    </v-dialog>
+
+    <!-- ===================== custody entry ===================== -->
+    <v-dialog v-model="custodyDialog" max-width="640" scrollable>
+        <v-card :loading="saving">
+            <v-card-title>{{ _('Add chain-of-custody entry') }}</v-card-title>
+            <v-card-text>
+                <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
+                    {{ _('This entry cannot be edited or deleted once saved.') }}
+                </v-alert>
+                <v-row>
+                    <v-col cols="12" md="6">
+                        <v-select v-bind="inputProps" v-model="custody.action"
+                                  :items="custodyActions" label="{{ _('Action') }}"></v-select>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-text-field v-bind="inputProps" type="datetime-local"
+                                      v-model="custody.occurred_at"
+                                      label="{{ _('Date and time') }}"></v-text-field>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-text-field v-bind="inputProps" v-model="custody.handled_by"
+                                      label="{{ _('Who collected / received it') }}"></v-text-field>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-text-field v-bind="inputProps" v-model="custody.location"
+                                      label="{{ _('Location') }}"></v-text-field>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-text-field v-bind="inputProps" v-model="custody.received_from"
+                                      label="{{ _('Received from') }}"></v-text-field>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-text-field v-bind="inputProps" v-model="custody.transferred_to"
+                                      label="{{ _('Transferred to') }}"></v-text-field>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-text-field v-bind="inputProps" v-model="custody.storage_location"
+                                      label="{{ _('Storage location') }}"></v-text-field>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                        <v-text-field v-bind="inputProps" v-model="custody.reference"
+                                      label="{{ _('Documentation / form reference') }}"></v-text-field>
+                    </v-col>
+                    <v-col cols="12">
+                        <v-textarea v-bind="inputProps" rows="2" v-model="custody.purpose"
+                                    label="{{ _('Purpose of transfer') }}"></v-textarea>
+                    </v-col>
+                    <v-col cols="12">
+                        <v-textarea v-bind="inputProps" rows="2" v-model="custody.condition"
+                                    label="{{ _('Evidence condition') }}"></v-textarea>
+                    </v-col>
+                    <v-col cols="12">
+                        <v-textarea v-bind="inputProps" rows="2" v-model="custody.notes"
+                                    label="{{ _('Notes') }}"></v-textarea>
+                    </v-col>
+                    <v-col cols="12">
+                        <!-- The signed form behind this entry. Uploaded with the
+                             entry rather than afterwards, because a custody row
+                             is append-only: there is no edit to come back and
+                             attach it later. -->
+                        <v-file-input v-model="custodyFile"
+                                      density="compact"
+                                      variant="outlined"
+                                      show-size
+                                      hide-details
+                                      prepend-icon="mdi-file-document-outline"
+                                      :accept="mediaAccept"
+                                      :disabled="uploadingCustodyFile"
+                                      label="{{ _('Signed custody form (PDF, Word, image)') }}"></v-file-input>
+                        <div v-if="uploadingCustodyFile" class="text-caption mt-1">
+                            {{ _('Uploading form…') }}
+                        </div>
+                    </v-col>
+                </v-row>
+            </v-card-text>
+            <v-card-actions>
+                <v-spacer></v-spacer>
+                <v-btn variant="text" @click="custodyDialog = false">{{ _('Cancel') }}</v-btn>
+                <v-btn color="primary" variant="flat" :loading="saving"
+                       :disabled="!custody.action" @click="saveCustody">{{ _('Add entry') }}</v-btn>
+            </v-card-actions>
+        </v-card>
+    </v-dialog>
+
+    <v-snackbar v-model="snackbar" :timeout="4000">${ snackMessage }</v-snackbar>
+
+{% endblock %}
+
+{% block js %}
+    <script src="/static/js/mixins/media-mixin.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/InlineMediaRenderer.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/ImageViewer.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/PdfViewer.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DocxViewer.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DownloadCodeDialog.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DownloadRequestButton.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MediaThumbnail.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MediaCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MediaGrid.js?v={{ config.VERSION }}"></script>
+
+    <script>
+        const {createApp} = Vue;
+        const {createVuetify} = Vuetify;
+        const vuetify = createVuetify(vuetifyConfig);
+
+        const app = createApp({
+            delimiters: delimiters,
+            mixins: [mediaMixin, globalMixin],
+
+            data: () => ({
+                translations: window.translations,
+                currentUser: JSON.parse(`{{ current_user.to_dict()|tojson }}`),
+                drawer: drawer,
+
+                inputProps: {
+                    variant: 'filled',
+                    density: 'compact',
+                    'hide-details': true,
+                },
+
+                // One renderer per page. Media only ever opens from the record
+                // drawer, so a single id is enough -- BulletinCard needs a
+                // per-instance id because many cards render at once.
+                mediaRendererId: 'evidence-record',
+
+                // Files chosen in the Media tab but not yet uploaded.
+                mediaUploads: [],
+                uploadingMedia: false,
+                mediaAccept: 'image/*,video/*,audio/*,application/pdf,.pdf,.doc,.docx,.txt',
+
+                loading: false,
+                detailLoading: false,
+                saving: false,
+                items: [],
+                itemsLength: 0,
+                page: 1,
+                perPage: 30,
+                q: {},
+                advSearchExpand: false,
+
+                drawerOpen: false,
+                tab: 'info',
+                current: {},
+                history: [],
+
+                editDialog: false,
+                edited: {},
+                custodyDialog: false,
+                // Signed form chosen for the custody entry being written.
+                custodyFile: null,
+                uploadingCustodyFile: false,
+                custody: {},
+
+                snackbar: false,
+                snackMessage: '',
+
+                // These mirror the constants on the Evidence model. They are a
+                // DRAFT pending the authoritative Evidence document.
+                evidenceTypes: [
+                    'Document', 'Photograph', 'Video', 'Audio', 'Testimony',
+                    'Physical Object', 'Digital Record', 'Report', 'Other',
+                ],
+                statuses: ['Draft', 'Under Review', 'Verified', 'Archived'],
+                confidentialities: ['Public', 'Internal', 'Restricted', 'Highly Sensitive'],
+                custodyActions: [
+                    'Collected', 'Received', 'Transferred', 'Stored',
+                    'Returned', 'Accessed', 'Correction',
+                ],
+
+                headers: [
+                    {title: "{{ _('Evidence ID') }}", value: 'evidence_number', sortable: false, width: 130},
+                    {title: "{{ _('Case code') }}", value: 'case_code', sortable: false, width: 130},
+                    {title: "{{ _('Type') }}", value: 'evidence_type', sortable: false},
+                    {title: "{{ _('Case/Bulletin') }}", value: 'bulletins', sortable: false, width: 110},
+                    {title: "{{ _('Collected') }}", value: 'date_collected', sortable: false, width: 150},
+                    {title: "{{ _('Confidentiality') }}", value: 'confidentiality', sortable: false, width: 140},
+                    {title: "{{ _('Status') }}", value: 'status', sortable: false, width: 120},
+                    {title: "", value: 'restricted', sortable: false, width: 40},
+                ],
+            }),
+
+            computed: {
+                // How many filters are actually narrowing the list, so the
+                // Advanced button can say when criteria are set that the
+                // toolbar has no box for.
+                activeFilterCount() {
+                    return Object.values(this.q || {})
+                        .filter(v => v !== null && v !== undefined && v !== '' && v !== false)
+                        .length;
+                },
+
+                // v-file-input hands back an array in some Vuetify builds and a
+                // bare File in others; normalise so the button state is right
+                // either way.
+                selectedUploadCount() {
+                    return this.normalizedUploads.length;
+                },
+
+                normalizedUploads() {
+                    const v = this.mediaUploads;
+                    if (!v) return [];
+                    return Array.isArray(v) ? v : [v];
+                },
+
+                pageCount() {
+                    return Math.max(1, Math.ceil(this.itemsLength / this.perPage));
+                },
+
+                // Grouped so the drawer reads like the Evidence specification
+                // rather than a flat dump of columns.
+                infoGroups() {
+                    const c = this.current;
+                    const names = (list) => (list || []).map(i => i.title || i.name || i.full_string || i.id).join(', ');
+                    return [
+                        {
+                            title: "{{ _('Evidence') }}",
+                            rows: [
+                                {label: "{{ _('Evidence ID') }}", value: c.evidence_number},
+                                {label: "{{ _('Case code') }}", value: c.case_code},
+                                {label: "{{ _('Type') }}", value: c.evidence_type},
+                                {label: "{{ _('Description') }}", value: c.description},
+                                {label: "{{ _('Content / summary') }}", value: c.content_summary},
+                                {label: "{{ _('Relevance') }}", value: c.relevance},
+                                {label: "{{ _('Verification') }}", value: c.verification_information},
+                            ],
+                        },
+                        {
+                            title: "{{ _('Source and collection') }}",
+                            rows: [
+                                {label: "{{ _('Source information') }}", value: c.source_information},
+                                {label: "{{ _('Ownership / source') }}", value: c.ownership_information},
+                                {label: "{{ _('Collection information') }}", value: c.collection_information},
+                                {label: "{{ _('Collector') }}", value: c.collector},
+                                {label: "{{ _('Collected by (user)') }}", value: c.collected_by ? (c.collected_by.name || c.collected_by.username) : null},
+                                {label: "{{ _('Collection location') }}", value: c.collection_location ? (c.collection_location.full_string || c.collection_location.title) : null},
+                                {label: "{{ _('Date of evidence') }}", value: c.evidence_date},
+                                {label: "{{ _('Date collected/received') }}", value: c.date_collected},
+                            ],
+                        },
+                        {
+                            title: "{{ _('Consent') }}",
+                            rows: [
+                                {label: "{{ _('Consent status') }}", value: c.consent_status},
+                                {label: "{{ _('Consent information') }}", value: c.consent_information},
+                            ],
+                        },
+                        {
+                            title: "{{ _('Related records') }}",
+                            rows: [
+                                {label: "{{ _('Case/Bulletin') }}", value: names(c.bulletins)},
+                                {label: "{{ _('Persons') }}", value: names(c.actors)},
+                                {label: "{{ _('Locations') }}", value: names(c.locations)},
+                                {label: "{{ _('Events') }}", value: names(c.events)},
+                                {label: "{{ _('Sources') }}", value: names(c.sources)},
+                                {label: "{{ _('Related evidence') }}", value: (c.related_evidence || []).map(e => e.evidence_number).join(', ')},
+                            ],
+                        },
+                        {
+                            title: "{{ _('Classification') }}",
+                            rows: [
+                                {label: "{{ _('Confidentiality') }}", value: c.confidentiality},
+                                {label: "{{ _('Status') }}", value: c.status},
+                                {label: "{{ _('Notes') }}", value: c.notes},
+                            ],
+                        },
+                    ];
+                },
+            },
+
+            watch: {
+                // Closing the drawer must tear down any video player too, not
+                // just hide it -- an audio track playing behind a closed drawer
+                // is the usual symptom of skipping this.
+                drawerOpen(open) {
+                    if (!open) this.closeExpandedMedia(this.mediaRendererId);
+                },
+            },
+
+            mounted() {
+                this.refresh();
+            },
+
+            methods: {
+                showSnack(message) {
+                    this.snackMessage = message;
+                    this.snackbar = true;
+                },
+
+                confColor(value) {
+                    return {
+                        'Public': 'green',
+                        'Internal': 'blue',
+                        'Restricted': 'orange',
+                        'Highly Sensitive': 'red',
+                    }[value] || 'grey';
+                },
+
+                statusColor(value) {
+                    return {
+                        'Draft': 'grey',
+                        'Under Review': 'warning',
+                        'Verified': 'success',
+                        'Archived': 'blue-grey',
+                    }[value] || 'grey';
+                },
+
+                custodyColor(action) {
+                    return {
+                        'Collected': 'primary',
+                        'Received': 'primary',
+                        'Transferred': 'warning',
+                        'Stored': 'blue-grey',
+                        'Returned': 'success',
+                        'Accessed': 'grey',
+                        'Correction': 'error',
+                    }[action] || 'grey';
+                },
+
+                search() {
+                    this.page = 1;
+                    this.refresh();
+                },
+
+                resetSearch() {
+                    this.q = {};
+                    this.search();
+                },
+
+                // Runs the same search as the toolbar and closes the panel, so
+                // the results are visible rather than hidden behind the dialog.
+                doAdvSearch() {
+                    this.advSearchExpand = false;
+                    this.search();
+                },
+
+                refresh() {
+                    this.loading = true;
+                    axios.post('/admin/api/evidence/', {
+                        page: this.page,
+                        per_page: this.perPage,
+                        q: this.q,
+                    })
+                        .then(response => {
+                            this.items = response.data.items || [];
+                            this.itemsLength = response.data.total || 0;
+                        })
+                        .catch(() => this.showSnack("{{ _('Could not load evidence') }}"))
+                        .finally(() => { this.loading = false; });
+                },
+
+                rowClick(e, row) {
+                    this.openRecord(row.item.id);
+                },
+
+                openRecord(id) {
+                    this.drawerOpen = true;
+                    this.detailLoading = true;
+                    this.tab = 'info';
+                    this.history = [];
+                    // Otherwise the previously expanded file is still mounted and
+                    // shows under the next record's Media tab.
+                    this.closeExpandedMedia(this.mediaRendererId);
+
+                    axios.get(`/admin/api/evidence/${id}`)
+                        .then(response => {
+                            this.current = response.data || {};
+                            return axios.get(`/admin/api/evidence/${id}/history`);
+                        })
+                        .then(response => {
+                            this.history = response.data?.items || [];
+                        })
+                        .catch(() => this.showSnack("{{ _('Could not open this evidence record') }}"))
+                        .finally(() => { this.detailLoading = false; });
+                },
+
+                // Icon by kind, so a list of exhibits is scannable without
+                // opening each one.
+                mediaIcon(media) {
+                    const type = (media?.fileType || '').toLowerCase();
+                    const name = (media?.filename || '').toLowerCase();
+                    if (type.startsWith('image')) return 'mdi-file-image-outline';
+                    if (type.startsWith('video')) return 'mdi-file-video-outline';
+                    if (type.startsWith('audio')) return 'mdi-file-music-outline';
+                    if (type.includes('pdf') || name.endsWith('.pdf')) return 'mdi-file-pdf-box';
+                    if (type.includes('word') || /\.docx?$/.test(name)) return 'mdi-file-word-outline';
+                    return 'mdi-file-outline';
+                },
+
+                // Upload then register, one file at a time: a partial failure
+                // should still leave the files that did work attached, and the
+                // user needs to be told exactly which ones did not.
+                async attachFiles() {
+                    const files = this.normalizedUploads;
+                    if (!this.current?.id || !files.length) return;
+
+                    this.uploadingMedia = true;
+                    const failures = [];
+                    let attached = 0;
+
+                    for (const file of files) {
+                        try {
+                            const form = new FormData();
+                            form.append('file', file);
+                            const upload = await axios.post('/admin/api/media/upload/', form, {
+                                headers: {'content-type': false},
+                                suppressGlobalErrorHandler: true,
+                            });
+
+                            await axios.post(`/admin/api/evidence/${this.current.id}/media`, {
+                                filename: upload.data?.filename,
+                                etag: upload.data?.etag,
+                                fileType: file.type || 'application/octet-stream',
+                                title: file.name,
+                            }, {suppressGlobalErrorHandler: true});
+                            attached++;
+                        } catch (err) {
+                            const reason = err?.response?.data?.message
+                                || err?.response?.data
+                                || "{{ _('upload failed') }}";
+                            failures.push(`${file.name}: ${reason}`);
+                        }
+                    }
+
+                    this.uploadingMedia = false;
+                    this.mediaUploads = [];
+                    if (attached) this.refreshCurrentMedia();
+
+                    if (failures.length) {
+                        this.showSnack(failures.join(' | '));
+                    } else {
+                        this.showSnack("{{ _('Files attached') }}");
+                    }
+                },
+
+                detachMedia(media) {
+                    if (!this.current?.id || !media?.id) return;
+                    axios.delete(`/admin/api/evidence/${this.current.id}/media/${media.id}`)
+                        .then(() => {
+                            this.showSnack("{{ _('File unlinked') }}");
+                            this.refreshCurrentMedia();
+                        })
+                        .catch(() => this.showSnack("{{ _('Could not unlink this file') }}"));
+                },
+
+                // Re-read just the record so the grid, the chip count and the
+                // list all reflect what is actually stored.
+                refreshCurrentMedia() {
+                    if (!this.current?.id) return;
+                    const id = this.current.id;
+                    this.closeExpandedMedia(this.mediaRendererId);
+                    axios.get(`/admin/api/evidence/${id}`)
+                        .then(response => { this.current = response.data || {}; })
+                        .catch(() => { /* the snack from the caller already said what happened */ });
+                },
+
+                newItem() {
+                    this.edited = {status: 'Draft'};
+                    this.editDialog = true;
+                },
+
+                editCurrent() {
+                    // Copy so cancelling leaves the drawer showing saved values.
+                    this.edited = JSON.parse(JSON.stringify(this.current));
+                    this.editDialog = true;
+                },
+
+                saveItem() {
+                    this.saving = true;
+                    const isNew = !this.edited.id;
+                    const req = isNew
+                        ? axios.post('/admin/api/evidence/create', {item: this.edited})
+                        : axios.put(`/admin/api/evidence/${this.edited.id}`, {item: this.edited});
+
+                    req.then(response => {
+                        this.showSnack(response.data?.message || "{{ _('Saved') }}");
+                        this.editDialog = false;
+                        this.refresh();
+                        const saved = response.data?.item;
+                        if (saved) this.openRecord(saved.id);
+                    })
+                        .catch(err => {
+                            this.showSnack(err?.response?.data?.message || "{{ _('Save failed') }}");
+                        })
+                        .finally(() => { this.saving = false; });
+                },
+
+                // The form is uploaded first and only then is the entry posted:
+                // a custody row cannot be edited afterwards, so an entry must
+                // never be written with its document missing.
+                async saveCustody() {
+                    this.saving = true;
+                    const files = Array.isArray(this.custodyFile)
+                        ? this.custodyFile
+                        : (this.custodyFile ? [this.custodyFile] : []);
+                    const entry = {...this.custody};
+
+                    if (files.length) {
+                        this.uploadingCustodyFile = true;
+                        try {
+                            const form = new FormData();
+                            form.append('file', files[0]);
+                            const upload = await axios.post('/admin/api/media/upload/', form, {
+                                headers: {'content-type': false},
+                                suppressGlobalErrorHandler: true,
+                            });
+                            const registered = await axios.post(
+                                `/admin/api/evidence/${this.current.id}/media`,
+                                {
+                                    filename: upload.data?.filename,
+                                    etag: upload.data?.etag,
+                                    fileType: files[0].type || 'application/octet-stream',
+                                    title: files[0].name,
+                                },
+                                {suppressGlobalErrorHandler: true},
+                            );
+                            entry.document_media = {id: registered.data?.item?.id};
+                        } catch (err) {
+                            this.uploadingCustodyFile = false;
+                            this.saving = false;
+                            this.showSnack(err?.response?.data?.message
+                                || "{{ _('Could not upload the custody form; the entry was not recorded.') }}");
+                            return;
+                        }
+                        this.uploadingCustodyFile = false;
+                    }
+
+                    axios.post(`/admin/api/evidence/${this.current.id}/custody`, {item: entry})
+                        .then(response => {
+                            this.showSnack(response.data?.message || "{{ _('Custody entry recorded') }}");
+                            this.custodyDialog = false;
+                            this.custody = {};
+                            this.custodyFile = null;
+                            this.openRecord(this.current.id);
+                        })
+                        .catch(err => {
+                            this.showSnack(err?.response?.data?.message || "{{ _('Could not record the entry') }}");
+                        })
+                        .finally(() => { this.saving = false; });
+                },
+            },
+        });
+
+        app.component('InlineMediaRenderer', InlineMediaRenderer);
+        app.component('ImageViewer', ImageViewer);
+        app.component('PdfViewer', PdfViewer);
+        app.component('DocxViewer', DocxViewer);
+        app.component('DownloadCodeDialog', DownloadCodeDialog);
+        app.component('DownloadRequestButton', DownloadRequestButton);
+        app.component('MediaThumbnail', MediaThumbnail);
+        app.component('MediaCard', MediaCard);
+        app.component('MediaGrid', MediaGrid);
+
+        app.use(router).use(vuetify);
+        router.isReady().then(() => {
+            app.mount('#app');
+            window.app = app;
+        });
+    </script>
+{% endblock %}

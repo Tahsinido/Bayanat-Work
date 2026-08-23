@@ -10,6 +10,7 @@ from enferno.admin.models import Activity
 from enferno.admin.models.Notification import Notification
 from enferno.export.models import Export
 from enferno.tasks import generate_export
+from enferno.utils import download_codes
 from enferno.utils.http_response import HTTPResponse
 from enferno.utils.logging_utils import get_logger
 import enferno.utils.typing as t
@@ -231,6 +232,9 @@ def change_export_status() -> Response:
 
     if action == "approve":
         export_request = export_request.approve()
+        # Minted here and returned once: the admin passes it to the requester
+        # out of band, and only the hash is kept.
+        code = export_request.issue_code() if download_codes.approval_enabled() else None
         if export_request.save():
             # record activity
             Activity.create(
@@ -254,6 +258,12 @@ def change_export_status() -> Response:
                 f"Export request {export_request.id} has been approved by {current_user.username} successfully.",
             )
 
+            if code:
+                return HTTPResponse.success(
+                    data={"code": code},
+                    message="Approved. Give this code to the requester directly -- "
+                    "it is shown once and cannot be recovered.",
+                )
             return HTTPResponse.success(
                 message="Export request approval will be processed shortly."
             )
@@ -300,44 +310,92 @@ def update_expiry() -> Response:
             return HTTPResponse.error("Save failed", status=417)
 
 
-@export.get("/api/exports/download")
+@export.post("/api/exports/download")
 def download_export_file() -> Response:
     """
-    Endpoint to Download an export file. Expects the export id as a query parameter.
+    Download an approved export archive, in exchange for its verification code.
+
+    This is a POST rather than a GET because approval alone no longer releases
+    the archive: the code the admin was shown has to come back with the
+    request. A link on its own is not enough, which is the point -- a leaked or
+    shared URL releases nothing.
+
+    Wrong codes are counted and the export locks after the configured number of
+    tries. The code is spent on success, so one approval yields one download.
 
     Returns:
-        - The file to download or access denied response if the export has expired.
+        - The file, or the reason it was refused.
     """
-    uid = request.args.get("exportId")
+    payload = request.json or {}
+    uid = payload.get("exportId")
+    code = payload.get("code")
 
     try:
         export_id = Export.decrypt_unique_id(uid)
-        export = db.session.get(Export, export_id)
-
-        # check permissions for download
-        # either admin or user is requester
-        if not current_user.has_role("Admin"):
-            if current_user.id != export.requester.id:
-                return HTTPResponse.forbidden("Forbidden")
-
-        if not export_id or not export:
-            return HTTPResponse.not_found("Export not found")
-        # check expiry
-        if not export.expired:
-            # Record activity
-            Activity.create(
-                current_user,
-                Activity.ACTION_DOWNLOAD,
-                Activity.STATUS_SUCCESS,
-                export.to_mini(),
-                Export.__table__.name,
-            )
-            return send_from_directory(
-                f"{Path(*Export.export_dir.parts[1:])}", f"{export.file_id}.zip"
-            )
-        else:
-            return HTTPResponse.error("Request expired", status=410)
-
     except Exception as e:
         logger.error(f"Unable to decrypt export request uid {e}")
         return HTTPResponse.not_found("Unable to decrypt export request uid")
+
+    export = db.session.get(Export, export_id) if export_id else None
+    if not export:
+        return HTTPResponse.not_found("Export not found")
+
+    # The approval belongs to the requester. An admin does not inherit it:
+    # letting one admin approve and collect on their own would defeat the
+    # two-person rule this exists to enforce.
+    if current_user.id != export.requester_id:
+        Activity.create(
+            current_user,
+            Activity.ACTION_DOWNLOAD,
+            Activity.STATUS_DENIED,
+            export.to_mini(),
+            Export.__table__.name,
+            details="Attempt to collect another user's export.",
+        )
+        return HTTPResponse.forbidden("Forbidden")
+
+    if export.expired:
+        return HTTPResponse.error("Request expired", status=410)
+
+    if download_codes.approval_enabled():
+        if export.downloaded_at:
+            return HTTPResponse.error("This export has already been downloaded.", status=409)
+        if export.code_locked:
+            return HTTPResponse.error(
+                "Too many incorrect codes. Ask an admin to approve a new export.", status=429
+            )
+        if export.code_expired or not export.code_hash:
+            return HTTPResponse.error(
+                "The code has expired. Ask an admin to approve a new export.", status=410
+            )
+        if not code:
+            return HTTPResponse.error("Enter the verification code", status=400)
+
+        ok = export.verify_code(code)
+        # Persist the attempt whichever way it went, so a wrong code is never
+        # free to retry.
+        db.session.commit()
+
+        if not ok:
+            Activity.create(
+                current_user,
+                Activity.ACTION_DOWNLOAD,
+                Activity.STATUS_DENIED,
+                export.to_mini(),
+                Export.__table__.name,
+                details="Incorrect export verification code.",
+            )
+            attempts_left = max(0, download_codes.max_attempts() - (export.code_attempts or 0))
+            return HTTPResponse.error(f"Incorrect code. {attempts_left} attempts left.", status=403)
+
+        export.mark_downloaded()
+        db.session.commit()
+
+    Activity.create(
+        current_user,
+        Activity.ACTION_DOWNLOAD,
+        Activity.STATUS_SUCCESS,
+        export.to_mini(),
+        Export.__table__.name,
+    )
+    return send_from_directory(f"{Path(*Export.export_dir.parts[1:])}", f"{export.file_id}.zip")

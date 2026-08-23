@@ -192,11 +192,18 @@ def api_field_data_create(validated_data: dict) -> Response:
 
 
 @admin.put("/api/field-data/<int:id>")
-@roles_accepted("Admin", "Mod", "DA")
+@roles_required("Admin")
 @validate_with(FieldDataRequestModel)
 def api_field_data_update(id: t.id, validated_data: dict) -> Response:
     """
     Endpoint to update a field data record.
+
+    Admin only, matching delete. Field data is collected evidence: once a record
+    is submitted it is treated as append-only, so a correction goes through
+    someone with the authority to make it rather than being editable in place by
+    whoever happens to have the record open. Creating new records is unchanged --
+    Mod and DA still collect data, they just cannot rewrite what is already
+    filed.
 
     Args:
         - id: id of the item to update.

@@ -32,6 +32,17 @@ class Activity(db.Model, BaseMixin):
     ACTION_APPROVE_EXPORT = "APPROVE"
     ACTION_REJECT_EXPORT = "REJECT"
     ACTION_DOWNLOAD = "DOWNLOAD"
+    # Evidence lifecycle. Separate from the generic CREATE/UPDATE actions so an
+    # evidence audit can be read without filtering every other record type, and
+    # so custody entries are distinguishable from metadata edits.
+    ACTION_EVIDENCE_CREATE = "EVIDENCE-CREATE"
+    ACTION_EVIDENCE_UPDATE = "EVIDENCE-UPDATE"
+    ACTION_EVIDENCE_VIEW = "EVIDENCE-VIEW"
+    ACTION_EVIDENCE_ARCHIVE = "EVIDENCE-ARCHIVE"
+    ACTION_CUSTODY_ADD = "CUSTODY-ADD"
+    ACTION_REQUEST_DOWNLOAD = "REQUEST-DOWNLOAD"
+    ACTION_APPROVE_DOWNLOAD = "APPROVE-DOWNLOAD"
+    ACTION_REJECT_DOWNLOAD = "REJECT-DOWNLOAD"
     ACTION_SEARCH = "SEARCH"
     ACTION_SELF_ASSIGN = "SELF-ASSIGN"
     ACTION_LOGIN = "LOGIN"

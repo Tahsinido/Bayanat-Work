@@ -7,6 +7,7 @@ const ExportDownload = Vue.defineComponent({
       translations: window.translations,
       timer: null,
       status: this.item.status,
+      codeOpen: false,
     };
   },
 
@@ -42,6 +43,42 @@ const ExportDownload = Vue.defineComponent({
           this.status = response.data.status;
         });
     },
+
+    startDownload() {
+      // The archive is only ever released in the response to a POST, so there
+      // is no URL to leak. With approval on that POST carries the code the
+      // admin issued; with it off the same POST just goes without one.
+      if (this.item.code_required === false) {
+        this.directDownload();
+        return;
+      }
+      this.codeOpen = true;
+    },
+
+    directDownload() {
+      axios
+        .post('/export/api/exports/download', { exportId: this.item.uid }, {
+          responseType: 'blob',
+          suppressGlobalErrorHandler: true,
+        })
+        .then((response) => {
+          const url = window.URL.createObjectURL(response.data);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `export-${this.item.id}.zip`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+        })
+        .catch(() => {
+          this.$root.showSnack?.(this.translations.downloadFailed_ || 'Download failed');
+        });
+    },
+
+    onDownloaded() {
+      this.$root.refresh?.();
+    },
   },
   template: `
 
@@ -73,18 +110,21 @@ const ExportDownload = Vue.defineComponent({
             </v-tooltip>
             <v-tooltip location="top" :text="translations.download_">
             <template #activator="{props}">
-            <v-btn @click.stop="" 
+            <v-btn @click.stop="startDownload"
                   v-bind="props"
                    variant="text"
-                   download 
-                   :href="'/export/api/exports/download?exportId=' + encodeURIComponent(this.item.uid)"
                    v-if="status === 'Ready'" icon="mdi-download-circle" color="success">
-
-              
             </v-btn>
             </template>
             </v-tooltip>
 
+            <download-code-dialog
+                v-model="codeOpen"
+                url="/export/api/exports/download"
+                :payload="{ exportId: item.uid }"
+                :filename="'export-' + item.id + '.zip'"
+                @downloaded="onDownloaded"
+            ></download-code-dialog>
 
       </div>
 

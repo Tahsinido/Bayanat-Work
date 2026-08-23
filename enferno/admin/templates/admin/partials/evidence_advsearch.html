@@ -1,0 +1,118 @@
+{# Advanced search for evidence records.
+
+   Bound directly to the same `q` object the quick toolbar writes to, so the two
+   are never out of step: whatever is typed here shows in the toolbar boxes and
+   the other way round, and one Search button submits both.
+
+   Every field here maps to a filter the evidence list endpoint already
+   implements -- nothing is offered that the server would silently ignore. #}
+<v-dialog v-model="advSearchExpand" max-width="900" scrollable>
+    <v-card>
+        <v-toolbar density="compact" color="primary">
+            <v-toolbar-title class="text-body-1">{{ _('Advanced search') }}</v-toolbar-title>
+            <v-spacer></v-spacer>
+            <v-btn icon="mdi-close" @click="advSearchExpand = false"></v-btn>
+        </v-toolbar>
+
+        <v-card-text>
+            <div class="text-overline text-medium-emphasis mb-1">{{ _('Identifiers') }}</div>
+            <v-row dense>
+                <v-col cols="12" md="4">
+                    <v-text-field v-bind="inputProps" v-model.trim="q.evidence_number"
+                                  label="{{ _('Evidence ID') }}"
+                                  placeholder="EVD-000001" persistent-placeholder></v-text-field>
+                </v-col>
+                <v-col cols="12" md="4">
+                    <v-text-field v-bind="inputProps" v-model.trim="q.case_code"
+                                  label="{{ _('Case code') }}"
+                                  placeholder="CASE-2026-014" persistent-placeholder></v-text-field>
+                </v-col>
+                <v-col cols="12" md="4">
+                    <v-text-field v-bind="inputProps" v-model.trim="q.collector"
+                                  label="{{ _('Collector') }}"></v-text-field>
+                </v-col>
+            </v-row>
+
+            <div class="text-overline text-medium-emphasis mt-4 mb-1">{{ _('Classification') }}</div>
+            <v-row dense>
+                <v-col cols="12" md="4">
+                    <v-select v-bind="inputProps" clearable v-model="q.evidence_type"
+                              :items="evidenceTypes" label="{{ _('Evidence type') }}"></v-select>
+                </v-col>
+                <v-col cols="12" md="4">
+                    <v-select v-bind="inputProps" clearable v-model="q.status"
+                              :items="statuses" label="{{ _('Status') }}"></v-select>
+                </v-col>
+                <v-col cols="12" md="4">
+                    <v-select v-bind="inputProps" clearable v-model="q.confidentiality"
+                              :items="confidentialities"
+                              label="{{ _('Confidentiality') }}"></v-select>
+                </v-col>
+            </v-row>
+
+            <div class="text-overline text-medium-emphasis mt-4 mb-1">{{ _('Free text') }}</div>
+            <v-row dense>
+                <v-col cols="12">
+                    <v-text-field v-bind="inputProps" v-model.trim="q.text"
+                                  prepend-inner-icon="mdi-magnify"
+                                  label="{{ _('Description, summary, relevance, notes, ID or case code') }}"
+                    ></v-text-field>
+                </v-col>
+            </v-row>
+
+            <div class="text-overline text-medium-emphasis mt-4 mb-1">{{ _('Dates') }}</div>
+            <v-row dense>
+                <v-col cols="12" md="3">
+                    <v-text-field v-bind="inputProps" type="date" v-model="q.date_collected_from"
+                                  label="{{ _('Collected from') }}"></v-text-field>
+                </v-col>
+                <v-col cols="12" md="3">
+                    <v-text-field v-bind="inputProps" type="date" v-model="q.date_collected_to"
+                                  label="{{ _('Collected to') }}"></v-text-field>
+                </v-col>
+                <v-col cols="12" md="3">
+                    <v-text-field v-bind="inputProps" type="date" v-model="q.evidence_date_from"
+                                  label="{{ _('Evidence date from') }}"></v-text-field>
+                </v-col>
+                <v-col cols="12" md="3">
+                    <v-text-field v-bind="inputProps" type="date" v-model="q.evidence_date_to"
+                                  label="{{ _('Evidence date to') }}"></v-text-field>
+                </v-col>
+            </v-row>
+
+            <div class="text-overline text-medium-emphasis mt-4 mb-1">{{ _('Related records') }}</div>
+            <v-row dense>
+                <v-col cols="12" md="4">
+                    <v-text-field v-bind="inputProps" type="number" v-model.number="q.bulletin_id"
+                                  label="{{ _('Case/Bulletin ID') }}"></v-text-field>
+                </v-col>
+                <v-col cols="12" md="4">
+                    <v-text-field v-bind="inputProps" type="number" v-model.number="q.actor_id"
+                                  label="{{ _('Person / actor ID') }}"></v-text-field>
+                </v-col>
+                <v-col cols="12" md="4">
+                    <v-text-field v-bind="inputProps" type="number" v-model.number="q.location_id"
+                                  label="{{ _('Location ID') }}"></v-text-field>
+                </v-col>
+                <v-col cols="12" md="4">
+                    <v-text-field v-bind="inputProps" type="number" v-model.number="q.event_id"
+                                  label="{{ _('Event ID') }}"></v-text-field>
+                </v-col>
+                <v-col cols="12" md="4">
+                    <v-text-field v-bind="inputProps" type="number" v-model.number="q.source_id"
+                                  label="{{ _('Source ID') }}"></v-text-field>
+                </v-col>
+            </v-row>
+        </v-card-text>
+
+        <v-divider></v-divider>
+        <v-card-actions>
+            <v-btn variant="text" @click="resetSearch">{{ _('Clear all') }}</v-btn>
+            <v-spacer></v-spacer>
+            <v-btn variant="text" @click="advSearchExpand = false">{{ _('Cancel') }}</v-btn>
+            <v-btn color="primary" variant="elevated" @click="doAdvSearch">
+                {{ _('Search') }}
+            </v-btn>
+        </v-card-actions>
+    </v-card>
+</v-dialog>

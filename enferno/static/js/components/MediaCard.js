@@ -154,6 +154,11 @@ const MediaCard = Vue.defineComponent({
     };
   },
   computed: {
+    // Server-rendered flag; when approval is switched off the old direct
+    // download is used unchanged.
+    downloadGated() {
+      return window.__DOWNLOAD_APPROVAL__ !== false;
+    },
     mediaType() {
       return this.$root.getFileTypeFromMimeType(this.media?.fileType);
     },
@@ -212,13 +217,21 @@ const MediaCard = Vue.defineComponent({
           this.downloadFile();
       }
     },
+    // Taking a copy off the system is gated: an admin approves the request and
+    // issues a code. Viewing this file is unaffected -- the thumbnail, player
+    // and PDF preview all keep serving straight from the media routes.
     downloadFile() {
-      const link = document.createElement('a');
-      link.href = this.s3url;
-      link.download = this.media.filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      if (!this.downloadGated) {
+        const link = document.createElement('a');
+        link.href = this.s3url;
+        link.download = this.media.filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+      }
+      // Hand off to the request button, which owns the request/code dialogs.
+      this.$refs.downloadBtn?.click();
     },
     loadOcrText(e) {
       if (!e?.value || this.ocrDetails?.word_count === this.media?.extraction?.word_count || this.ocrLoading) return;
@@ -279,6 +292,16 @@ const MediaCard = Vue.defineComponent({
             ${fileMetadata}
           </v-card>
         </v-menu>
+        <v-spacer></v-spacer>
+        <!-- Mini cards need the same route to a copy as full ones, otherwise
+             clicking a non-previewable file here would do nothing at all. -->
+        <download-request-button
+            v-if="media && media.id"
+            :media="media"
+            :gated="downloadGated"
+            :direct-url="s3url"
+            ref="downloadBtn"
+        ></download-request-button>
       </v-card-actions>
     </v-card>
 
@@ -388,6 +411,13 @@ const MediaCard = Vue.defineComponent({
 
       <v-divider></v-divider>
       <v-card-actions class="justify-end d-flex py-0" style="min-height: 45px;">
+        <download-request-button
+            v-if="media && media.id"
+            :media="media"
+            :gated="downloadGated"
+            :direct-url="s3url"
+            ref="downloadBtn"
+        ></download-request-button>
         <v-spacer></v-spacer>
         <slot name="actions"></slot>
       </v-card-actions>

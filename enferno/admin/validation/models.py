@@ -1760,6 +1760,15 @@ class ActivitiesModel(BaseModel):
     CREATE: bool = Field(default=False)
     DELETE: bool = Field(default=False)
     DOWNLOAD: bool = Field(default=False)
+    # Hyphenated on the wire, like SELF-ASSIGN below.
+    REQUEST_DOWNLOAD: bool = Field(default=False, alias="REQUEST-DOWNLOAD")
+    APPROVE_DOWNLOAD: bool = Field(default=False, alias="APPROVE-DOWNLOAD")
+    REJECT_DOWNLOAD: bool = Field(default=False, alias="REJECT-DOWNLOAD")
+    EVIDENCE_CREATE: bool = Field(default=False, alias="EVIDENCE-CREATE")
+    EVIDENCE_UPDATE: bool = Field(default=False, alias="EVIDENCE-UPDATE")
+    EVIDENCE_VIEW: bool = Field(default=False, alias="EVIDENCE-VIEW")
+    EVIDENCE_ARCHIVE: bool = Field(default=False, alias="EVIDENCE-ARCHIVE")
+    CUSTODY_ADD: bool = Field(default=False, alias="CUSTODY-ADD")
     LOGIN: bool = Field(default=False)
     LOGOUT: bool = Field(default=False)
     REJECT: bool = Field(default=False)
@@ -2044,6 +2053,11 @@ class FullConfigValidationModel(ConfigValidationModel):
     LLM_OCR_MODEL: Optional[str] = None
     LLM_OCR_API_KEY: Optional[str] = None
     DEDUP_TOOL: bool
+    DOWNLOAD_APPROVAL_ENABLED: bool = Field(default=True)
+    DOWNLOAD_CODE_LENGTH: Optional[int] = Field(default=None, ge=6, le=32)
+    DOWNLOAD_CODE_TTL_MINUTES: Optional[int] = Field(default=None, gt=0, le=1440)
+    DOWNLOAD_CODE_MAX_ATTEMPTS: Optional[int] = Field(default=None, gt=0, le=100)
+    DOWNLOAD_REQUEST_EXPIRY_HOURS: Optional[int] = Field(default=None, gt=0, le=8760)
     SEMANTIC_SEARCH_THRESHOLD: Optional[float] = Field(default=None, ge=0, le=1)
     SEMANTIC_SEARCH_MAX_RESULTS: Optional[int] = Field(default=None, gt=0, le=200)
     MAPS_API_ENDPOINT: str

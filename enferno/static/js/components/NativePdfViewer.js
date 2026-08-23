@@ -1,3 +1,15 @@
+/**
+ * DELIBERATELY UNWIRED — do not load or register this component.
+ *
+ * It displays a PDF by handing its URL to an <iframe>, which means the browser's
+ * own PDF viewer renders it, complete with download and print buttons. Those
+ * buttons act on bytes the browser already holds, so no server-side control can
+ * take them away: wiring this component back in reopens a download path around
+ * the approval flow in enferno/admin/views/download_requests.py.
+ *
+ * Use PdfViewer.js instead. It renders through PDF.js onto a canvas, so the file
+ * is never handed to the browser's viewer.
+ */
 const NativePdfViewer = Vue.defineComponent({
   props: ['media', 'mediaType'],
   data: () => {

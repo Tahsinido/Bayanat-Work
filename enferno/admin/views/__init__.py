@@ -175,6 +175,9 @@ from . import reference_data  # noqa: E402, F401
 from . import relationship_infos  # noqa: E402, F401
 from . import bulletins  # noqa: E402, F401
 from . import media  # noqa: E402, F401
+from . import download_requests  # noqa: E402, F401
+from . import evidence  # noqa: E402, F401
+from . import eyewitness  # noqa: E402, F401
 from . import actors  # noqa: E402, F401
 from . import history  # noqa: E402, F401
 from . import users  # noqa: E402, F401, F811

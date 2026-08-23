@@ -432,9 +432,79 @@
                                             </v-switch>
                                         </v-col>
                                     </v-row>
-                    
+
                                     <v-divider class="my-6"></v-divider>
-                    
+
+                                    <h4 class="subtitle-2 mb-3">{{ _('File downloads') }}</h4>
+                                    <p class="text-caption">{{ _('Turning these off removes the record of who asked for a file and who released it. The approval flow keeps working, but it stops being auditable.') }}</p>
+                                    <v-row>
+                                        <v-col cols="12" lg="4">
+                                            <div class="text-body-2 mb-n1"><strong>{{ _('File downloads requested') }}</strong>{{ _(' by users.') }}</div>
+                                            <v-switch persistent-hint
+                                                hint="{{ _('This setting will enable logging every request to download an original media file, including the stated reason.') }}"
+                                                v-model="eitem.ACTIVITIES['REQUEST-DOWNLOAD']">
+                                            </v-switch>
+                                        </v-col>
+                                        <v-col cols="12" lg="4">
+                                            <div class="text-body-2 mb-n1"><strong>{{ _('File downloads approved') }}</strong>{{ _(' by administrators.') }}</div>
+                                            <v-switch persistent-hint
+                                                hint="{{ _('This setting will enable logging every download approval, recording which administrator released which file.') }}"
+                                                v-model="eitem.ACTIVITIES['APPROVE-DOWNLOAD']">
+                                            </v-switch>
+                                        </v-col>
+                                        <v-col cols="12" lg="4">
+                                            <div class="text-body-2 mb-n1"><strong>{{ _('File downloads rejected') }}</strong>{{ _(' by administrators.') }}</div>
+                                            <v-switch persistent-hint
+                                                hint="{{ _('This setting will enable logging every rejected download request.') }}"
+                                                v-model="eitem.ACTIVITIES['REJECT-DOWNLOAD']">
+                                            </v-switch>
+                                        </v-col>
+                                    </v-row>
+
+                                    <v-divider class="my-6"></v-divider>
+
+                                    <h4 class="subtitle-2 mb-3">{{ _('Evidence') }}</h4>
+                                    <p class="text-caption">{{ _('The evidence audit trail. Turning these off removes the record of who created, changed or consulted an evidence item, and of custody transfers. Leave them on unless you have a specific reason not to.') }}</p>
+                                    <v-row>
+                                        <v-col cols="12" lg="4">
+                                            <div class="text-body-2 mb-n1"><strong>{{ _('Evidence created') }}</strong>{{ _(' by users.') }}</div>
+                                            <v-switch persistent-hint
+                                                hint="{{ _('Logs the creation of every evidence record.') }}"
+                                                v-model="eitem.ACTIVITIES['EVIDENCE-CREATE']">
+                                            </v-switch>
+                                        </v-col>
+                                        <v-col cols="12" lg="4">
+                                            <div class="text-body-2 mb-n1"><strong>{{ _('Evidence updated') }}</strong>{{ _(' by users.') }}</div>
+                                            <v-switch persistent-hint
+                                                hint="{{ _('Logs every change to an evidence record. Field-level history is kept separately and is not affected by this setting.') }}"
+                                                v-model="eitem.ACTIVITIES['EVIDENCE-UPDATE']">
+                                            </v-switch>
+                                        </v-col>
+                                        <v-col cols="12" lg="4">
+                                            <div class="text-body-2 mb-n1"><strong>{{ _('Evidence viewed') }}</strong>{{ _(' by users.') }}</div>
+                                            <v-switch persistent-hint
+                                                hint="{{ _('Logs each time an evidence record is opened. Useful for sensitive material, but produces a high volume of entries.') }}"
+                                                v-model="eitem.ACTIVITIES['EVIDENCE-VIEW']">
+                                            </v-switch>
+                                        </v-col>
+                                        <v-col cols="12" lg="4">
+                                            <div class="text-body-2 mb-n1"><strong>{{ _('Evidence archived') }}</strong>{{ _(' by administrators.') }}</div>
+                                            <v-switch persistent-hint
+                                                hint="{{ _('Logs archiving of evidence records. Evidence is archived rather than deleted.') }}"
+                                                v-model="eitem.ACTIVITIES['EVIDENCE-ARCHIVE']">
+                                            </v-switch>
+                                        </v-col>
+                                        <v-col cols="12" lg="4">
+                                            <div class="text-body-2 mb-n1"><strong>{{ _('Chain-of-custody entries') }}</strong>{{ _(' added by users.') }}</div>
+                                            <v-switch persistent-hint
+                                                hint="{{ _('Logs each chain-of-custody entry. Custody entries are themselves append-only and cannot be edited or removed.') }}"
+                                                v-model="eitem.ACTIVITIES['CUSTODY-ADD']">
+                                            </v-switch>
+                                        </v-col>
+                                    </v-row>
+
+                                    <v-divider class="my-6"></v-divider>
+
                                     <h4 class="subtitle-2 mb-3">{{ _('Authentication') }}</h4>
                                     <v-row>
                                         <v-col cols="12" lg="4">

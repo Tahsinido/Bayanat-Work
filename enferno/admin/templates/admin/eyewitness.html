@@ -1,0 +1,869 @@
+{% extends 'layout.html' %}
+
+{# Styles live in the head block, never inside `content`: `content` renders
+   inside #app, and Vue's compiler drops <style> elements from that subtree. #}
+{% block css %}
+    <style>
+        #eyewitness-dt table {
+            border-collapse: collapse;
+        }
+
+        #eyewitness-dt th,
+        #eyewitness-dt td {
+            border: 1px solid rgba(var(--v-border-color), 0.28);
+        }
+
+        #eyewitness-dt thead th {
+            background: rgba(var(--v-border-color), 0.05);
+            font-weight: 600;
+        }
+
+        .ew-kv {
+            border: 1px solid rgba(var(--v-border-color), 0.28);
+        }
+
+        .ew-kv__row {
+            display: grid;
+            grid-template-columns: 220px minmax(0, 1fr);
+            align-items: stretch;
+        }
+
+        .ew-kv__row + .ew-kv__row {
+            border-top: 1px solid rgba(var(--v-border-color), 0.28);
+        }
+
+        .ew-kv__row > * {
+            padding: 6px 10px;
+            min-width: 0;
+            word-break: break-word;
+        }
+
+        .ew-kv__row > * + * {
+            border-left: 1px solid rgba(var(--v-border-color), 0.28);
+        }
+
+        .ew-kv__key {
+            background: rgba(var(--v-border-color), 0.04);
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <v-main>
+        {% include 'admin/partials/eyewitness_advsearch.html' %}
+        <v-container fluid>
+            <v-card>
+                <v-card-text>
+
+                    <v-data-table-server
+                            fixed-header
+                            height="calc(100vh - 330px)"
+                            id="eyewitness-dt"
+                            hover
+                            :headers="headers"
+                            :items="items"
+                            :items-length="itemsLength"
+                            :loading="loading"
+                            :page="page"
+                            :items-per-page="perPage"
+                            @update:options="refresh"
+                            @click:row="rowClick"
+                            class="cursor-pointer"
+                            hide-default-footer
+                    >
+                        <template #top>
+                            <v-sheet class="ma-3 d-flex align-center flex-wrap ga-2">
+                                <v-text-field
+                                        density="compact" variant="outlined" hide-details
+                                        style="max-width: 300px;"
+                                        v-model.trim="q.text"
+                                        @keydown.enter="search"
+                                        prepend-inner-icon="mdi-magnify"
+                                        label="{{ _('Search captures') }}"
+                                ></v-text-field>
+
+                                <v-text-field density="compact" variant="outlined" hide-details
+                                              style="max-width: 170px;" clearable
+                                              v-model.trim="q.device_id"
+                                              @keydown.enter="search"
+                                              label="{{ _('Device ID') }}"></v-text-field>
+
+                                <v-text-field density="compact" variant="outlined" hide-details
+                                              style="max-width: 170px;" clearable
+                                              v-model.trim="q.username"
+                                              @keydown.enter="search"
+                                              label="{{ _('Username') }}"></v-text-field>
+
+                                <v-select density="compact" variant="outlined" hide-details
+                                          style="max-width: 175px;" clearable
+                                          v-model="q.status" :items="statuses"
+                                          @update:model-value="search"
+                                          label="{{ _('Status') }}"></v-select>
+
+                                <v-btn variant="tonal" prepend-icon="mdi-tune"
+                                       @click="advSearchExpand = true">
+                                    {{ _('Advanced') }}
+                                    <v-chip v-if="activeFilterCount" size="x-small" class="ml-2">
+                                        ${ activeFilterCount }
+                                    </v-chip>
+                                </v-btn>
+
+                                <v-btn variant="text" icon="mdi-close" @click="resetSearch"></v-btn>
+                                <v-spacer></v-spacer>
+
+                                {% if current_user.roles_in(['Admin','Mod','DA']) %}
+                                    <v-btn color="primary" variant="elevated" @click="newItem"
+                                           prepend-icon="mdi-plus"
+                                    >{{ _('New Capture') }}</v-btn>
+                                {% endif %}
+                            </v-sheet>
+                        </template>
+
+                        <template #item.location_name="{ item }">
+                            <span v-if="item.location_name">${ item.location_name }</span>
+                            <span v-else class="text-disabled">&mdash;</span>
+                            <!-- Says where the name came from, so a site name is
+                                 never mistaken for a chosen location. -->
+                            <v-chip v-if="!item.capture_location && item.site_name"
+                                    size="x-small" variant="tonal" class="ml-2">
+                                {{ _('site') }}
+                            </v-chip>
+                            <v-icon v-if="item.geo" size="x-small" class="ml-1"
+                                    icon="mdi-map-marker" color="primary"
+                                    title="{{ _('Has GPS coordinates') }}"></v-icon>
+                        </template>
+
+                        <template #item.date_of_capture="{ item }">
+                            ${ item.date_of_capture || '—' }
+                        </template>
+
+                        <template #item.number_of_items="{ item }">
+                            ${ item.number_of_items ?? '—' }
+                        </template>
+
+                        <template #item.status="{ item }">
+                            <v-chip size="small" :color="statusColor(item.status)">
+                                ${ item.status }
+                            </v-chip>
+                        </template>
+
+                        <template #bottom>
+                            <div class="d-flex align-center pa-3">
+                                <span class="text-caption text-medium-emphasis">
+                                    ${ itemsLength } {{ _('capture records') }}
+                                </span>
+                                <v-spacer></v-spacer>
+                                <v-pagination v-model="page" :length="pageCount" density="compact"
+                                              total-visible="6"
+                                              @update:model-value="refresh"></v-pagination>
+                            </div>
+                        </template>
+                    </v-data-table-server>
+
+                </v-card-text>
+            </v-card>
+        </v-container>
+
+        <!-- ---------------- record drawer ---------------- -->
+        <v-navigation-drawer v-model="drawerOpen" location="right" temporary width="820">
+            <v-toolbar density="compact" color="primary">
+                <v-toolbar-title class="text-body-1">
+                    ${ current.item_id || '{{ _('Capture') }}' }
+                </v-toolbar-title>
+                <v-spacer></v-spacer>
+                {% if current_user.roles_in(['Admin','Mod','DA']) %}
+                    <v-btn icon="mdi-pencil" size="small" @click="editCurrent"></v-btn>
+                {% endif %}
+                <v-btn icon="mdi-close" size="small" @click="drawerOpen = false"></v-btn>
+            </v-toolbar>
+
+            <v-progress-linear v-if="detailLoading" indeterminate></v-progress-linear>
+
+            <v-tabs v-model="tab" density="compact">
+                <v-tab value="info">{{ _('Capture') }}</v-tab>
+                <v-tab value="media">{{ _('Files / Media') }}
+                    <v-chip size="x-small" class="ml-1">${ (current.medias || []).length }</v-chip>
+                </v-tab>
+                <v-tab value="evidence">{{ _('Evidence') }}
+                    <v-chip size="x-small" class="ml-1">${ (current.evidence_items || []).length }</v-chip>
+                </v-tab>
+            </v-tabs>
+
+            <v-card-text>
+                <v-window v-model="tab">
+                    <!-- ---------------- metadata ---------------- -->
+                    <v-window-item value="info">
+                        <div v-for="group in infoGroups" :key="group.title" class="mb-5">
+                            <h4 class="text-subtitle-2 mb-2">${ group.title }</h4>
+                            <div class="ew-kv">
+                                <div v-for="row in group.rows" :key="row.label" class="ew-kv__row">
+                                    <div class="text-caption text-medium-emphasis ew-kv__key">
+                                        ${ row.label }
+                                    </div>
+                                    <div class="text-body-2">
+                                        <span v-if="row.value">${ row.value }</span>
+                                        <span v-else class="text-disabled">&mdash;</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </v-window-item>
+
+                    <!-- ---------------- media ---------------- -->
+                    <v-window-item value="media">
+                        <p class="text-caption text-medium-emphasis mb-3">
+                            {{ _('Files recorded with this capture. Previews open inside Bayanat; taking a copy goes through the download approval process.') }}
+                        </p>
+
+                        <div v-if="current.id" class="d-flex align-start ga-2 mb-4">
+                            <v-file-input
+                                    v-model="mediaUploads"
+                                    multiple chips show-size hide-details
+                                    density="compact" variant="outlined"
+                                    prepend-icon="mdi-paperclip"
+                                    :disabled="uploadingMedia"
+                                    accept="image/*,video/*,audio/*,application/pdf,.pdf,.doc,.docx,.txt"
+                                    label="{{ _('Images, video, audio, PDF or Word') }}"
+                            ></v-file-input>
+                            <v-btn color="primary" :loading="uploadingMedia"
+                                   :disabled="!selectedUploadCount" @click="attachFiles">
+                                {{ _('Attach') }}
+                            </v-btn>
+                        </div>
+                        <v-progress-linear v-if="uploadingMedia" indeterminate class="mb-3"></v-progress-linear>
+
+                        <!-- The renderer has to be mounted for a thumbnail click
+                             to show anything: handleExpandedMedia only records
+                             which item is expanded, this is what draws it. -->
+                        <inline-media-renderer
+                                :renderer-id="mediaRendererId"
+                                :media="expandedByRenderer?.[mediaRendererId]?.media"
+                                :media-type="expandedByRenderer?.[mediaRendererId]?.mediaType"
+                                :initial-orientation="expandedByRenderer?.[mediaRendererId]?.media?.orientation || 0"
+                                @ready="onMediaRendererReady"
+                                @fullscreen="handleFullscreen(mediaRendererId)"
+                                @close="closeExpandedMedia(mediaRendererId)"
+                        ></inline-media-renderer>
+
+                        <media-grid v-if="(current.medias || []).length"
+                                    prioritize-videos
+                                    :medias="current.medias"
+                                    @media-click="handleExpandedMedia({ rendererId: mediaRendererId, ...$event })"
+                        ></media-grid>
+                        <v-alert v-else type="info" variant="tonal" density="compact" class="mb-4">
+                            {{ _('No files recorded directly against this capture yet.') }}
+                        </v-alert>
+
+                        <!-- Unlinking is a list rather than an action on the
+                             tiles: a misplaced click on a thumbnail should open
+                             the file, never detach it. -->
+                        <v-list v-if="(current.medias || []).length" density="compact" class="mt-3 mb-4">
+                            <v-list-item v-for="m in current.medias" :key="m.id">
+                                <template #prepend>
+                                    <v-icon :icon="mediaIcon(m)" class="mr-2"></v-icon>
+                                </template>
+                                <v-list-item-title>${ m.title || m.filename }</v-list-item-title>
+                                <v-list-item-subtitle>${ m.filename }</v-list-item-subtitle>
+                                <template #append>
+                                    <v-btn icon="mdi-link-off" size="small" variant="text"
+                                           @click.stop="detachMedia(m)"></v-btn>
+                                </template>
+                            </v-list-item>
+                        </v-list>
+
+                        <!-- Files that belong to the linked exhibits. Shown here so
+                             the capture accounts for everything it produced without
+                             the same file being attached twice. -->
+                        <div v-if="(current.evidence_medias || []).length">
+                            <h4 class="text-subtitle-2 mb-2">{{ _('Through linked evidence') }}</h4>
+                            <v-list density="compact">
+                                <v-list-item v-for="m in current.evidence_medias" :key="'ev-' + m.id">
+                                    <template #prepend>
+                                        <v-icon :icon="mediaIcon(m)" class="mr-2"></v-icon>
+                                    </template>
+                                    <v-list-item-title>${ m.title || m.filename }</v-list-item-title>
+                                    <v-list-item-subtitle>${ m.via_evidence }</v-list-item-subtitle>
+                                </v-list-item>
+                            </v-list>
+                        </div>
+                    </v-window-item>
+
+                    <!-- ---------------- evidence ---------------- -->
+                    <v-window-item value="evidence">
+                        <p class="text-caption text-medium-emphasis mb-3">
+                            {{ _('Exhibits produced from this capture. Their own metadata lives on the evidence record and is not repeated here.') }}
+                        </p>
+                        <v-list v-if="(current.evidence_items || []).length" density="compact">
+                            <v-list-item v-for="e in current.evidence_items" :key="e.id"
+                                         @click="openEvidence(e.id)">
+                                <template #prepend>
+                                    <v-icon icon="mdi-archive-outline" class="mr-2"></v-icon>
+                                </template>
+                                <v-list-item-title>${ e.title }</v-list-item-title>
+                                <v-list-item-subtitle v-if="e.case_code">
+                                    {{ _('Case code') }}: ${ e.case_code }
+                                </v-list-item-subtitle>
+                            </v-list-item>
+                        </v-list>
+                        <v-alert v-else type="info" variant="tonal" density="compact">
+                            {{ _('No evidence linked to this capture yet.') }}
+                        </v-alert>
+                    </v-window-item>
+                </v-window>
+            </v-card-text>
+        </v-navigation-drawer>
+
+        <!-- ---------------- edit dialog ---------------- -->
+        <v-dialog v-model="editDialog" max-width="900" scrollable>
+            <v-card>
+                <v-toolbar density="compact" color="primary">
+                    <v-toolbar-title class="text-body-1">
+                        ${ edited.id ? '{{ _('Edit capture') }}' : '{{ _('New capture') }}' }
+                    </v-toolbar-title>
+                    <v-spacer></v-spacer>
+                    <v-btn icon="mdi-close" @click="editDialog = false"></v-btn>
+                </v-toolbar>
+
+                <v-card-text>
+                    <div class="text-overline text-medium-emphasis mb-1">{{ _('Item and device') }}</div>
+                    <v-row dense>
+                        <v-col cols="12" md="3">
+                            <v-text-field v-bind="inputProps" v-model.trim="edited.item_id"
+                                          label="{{ _('Item ID') }}"></v-text-field>
+                        </v-col>
+                        <v-col cols="12" md="3">
+                            <v-text-field v-bind="inputProps" type="number"
+                                          v-model.number="edited.number_of_items"
+                                          label="{{ _('Number of items') }}"></v-text-field>
+                        </v-col>
+                        <v-col cols="12" md="3">
+                            <v-text-field v-bind="inputProps" v-model.trim="edited.device_id"
+                                          label="{{ _('Device ID') }}"></v-text-field>
+                        </v-col>
+                        <v-col cols="12" md="3">
+                            <v-text-field v-bind="inputProps" v-model.trim="edited.username"
+                                          label="{{ _('Username') }}"></v-text-field>
+                        </v-col>
+                    </v-row>
+
+                    <div class="text-overline text-medium-emphasis mt-4 mb-1">{{ _('Alleged event') }}</div>
+                    <v-row dense>
+                        <v-col cols="12" md="6">
+                            <v-autocomplete v-bind="inputProps" clearable
+                                            v-model="edited.alleged_event"
+                                            :items="eventOptions" :loading="loadingEvents"
+                                            item-title="title" item-value="id" return-object
+                                            @update:search="searchEvents"
+                                            label="{{ _('Alleged event') }}"></v-autocomplete>
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <v-autocomplete v-bind="inputProps" clearable multiple chips
+                                            v-model="edited.alleged_perpetrators"
+                                            :items="actorOptions" :loading="loadingActors"
+                                            item-title="title" item-value="id" return-object
+                                            @update:search="searchActors"
+                                            label="{{ _('Alleged perpetrator') }}"></v-autocomplete>
+                        </v-col>
+                        <v-col cols="12">
+                            <v-textarea v-bind="inputProps" rows="3"
+                                        v-model="edited.event_description"
+                                        label="{{ _('Event description') }}"></v-textarea>
+                        </v-col>
+                        <v-col cols="12">
+                            <v-textarea v-bind="inputProps" rows="3" v-model="edited.user_notes"
+                                        label="{{ _('User notes') }}"></v-textarea>
+                        </v-col>
+                    </v-row>
+
+                    <div class="text-overline text-medium-emphasis mt-4 mb-1">{{ _('Capture') }}</div>
+                    <v-row dense>
+                        <v-col cols="12" md="4">
+                            <v-text-field v-bind="inputProps" type="datetime-local"
+                                          v-model="edited.date_of_capture"
+                                          label="{{ _('Date of capture') }}"></v-text-field>
+                        </v-col>
+                        <v-col cols="12" md="8">
+                            <v-autocomplete v-bind="inputProps" clearable
+                                            v-model="edited.capture_location"
+                                            :items="locationOptions" :loading="loadingLocations"
+                                            item-title="title" item-value="id" return-object
+                                            @update:search="searchLocations"
+                                            label="{{ _('Location of capture') }}"
+                                            hint="{{ _('District and governorate are read from this location') }}"
+                                            persistent-hint></v-autocomplete>
+                        </v-col>
+                        <v-col cols="12">
+                            <!-- The GPS reading, separate from the location
+                                 link above: one says where this sits in the
+                                 archive's geography, the other where the device
+                                 actually was. -->
+                            <div class="text-caption text-medium-emphasis mb-1">
+                                {{ _('GPS of capture — click the map to drop or move the marker') }}
+                            </div>
+                            <geo-map v-model="edited.geo"
+                                     :input-props="inputProps"
+                                     :map-height="320"
+                                     style="z-index: 200;"></geo-map>
+                        </v-col>
+                    </v-row>
+
+                    <div class="text-overline text-medium-emphasis mt-4 mb-1">{{ _('Links') }}</div>
+                    <v-row dense>
+                        <v-col cols="12" md="6">
+                            <v-autocomplete v-bind="inputProps" clearable multiple chips
+                                            v-model="edited.tags"
+                                            :items="labelOptions" :loading="loadingLabels"
+                                            item-title="title" item-value="id" return-object
+                                            @update:search="searchLabels"
+                                            label="{{ _('Tags used') }}"></v-autocomplete>
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <v-select v-bind="inputProps" v-model="edited.status"
+                                      :items="statuses" label="{{ _('Status') }}"></v-select>
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <v-autocomplete v-bind="inputProps" clearable multiple chips
+                                            v-model="edited.bulletins"
+                                            :items="bulletinOptions" :loading="loadingBulletins"
+                                            item-title="title" item-value="id" return-object
+                                            @update:search="searchBulletins"
+                                            label="{{ _('Case / Bulletin') }}"></v-autocomplete>
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <v-autocomplete v-bind="inputProps" clearable multiple chips
+                                            v-model="edited.evidence_items"
+                                            :items="evidenceOptions" :loading="loadingEvidence"
+                                            item-title="title" item-value="id" return-object
+                                            @update:search="searchEvidence"
+                                            label="{{ _('Related evidence') }}"></v-autocomplete>
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <v-autocomplete v-bind="inputProps" clearable multiple chips
+                                            v-model="edited.field_data"
+                                            :items="fieldDataOptions" :loading="loadingFieldData"
+                                            item-title="title" item-value="id" return-object
+                                            @update:search="searchFieldData"
+                                            label="{{ _('Field Data site') }}"></v-autocomplete>
+                        </v-col>
+                    </v-row>
+                </v-card-text>
+
+                <v-divider></v-divider>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn variant="text" @click="editDialog = false">{{ _('Cancel') }}</v-btn>
+                    <v-btn color="primary" variant="flat" :loading="saving" @click="saveItem">
+                        {{ _('Save') }}
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <v-snackbar v-model="snackbar" :timeout="4000">${ snackMessage }</v-snackbar>
+    </v-main>
+{% endblock %}
+
+{% block js %}
+    {# global-mixin is already loaded by layout.html; re-including it redeclares
+       `const globalMixin` and the whole page fails to mount. #}
+    <script src="/static/js/mixins/media-mixin.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/InlineMediaRenderer.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/ImageViewer.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/PdfViewer.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DocxViewer.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DownloadCodeDialog.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DownloadRequestButton.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MediaThumbnail.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MediaCard.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/MediaGrid.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/GeoMap.js?v={{ config.VERSION }}"></script>
+
+    <script>
+        const {createApp} = Vue;
+        const {createVuetify} = Vuetify;
+        const vuetify = createVuetify(vuetifyConfig);
+
+        const app = createApp({
+            delimiters: delimiters,
+            mixins: [mediaMixin, globalMixin],
+
+            data: () => ({
+                translations: window.translations,
+                currentUser: JSON.parse(`{{ current_user.to_dict()|tojson }}`),
+                drawer: drawer,
+
+                inputProps: {
+                    variant: 'filled',
+                    density: 'compact',
+                    'hide-details': true,
+                },
+
+                loading: false,
+                detailLoading: false,
+                saving: false,
+                items: [],
+                itemsLength: 0,
+                page: 1,
+                perPage: 30,
+
+                q: {},
+                advSearchExpand: false,
+
+                drawerOpen: false,
+                tab: 'info',
+                current: {},
+
+                editDialog: false,
+                edited: {},
+
+                mediaUploads: [],
+                uploadingMedia: false,
+                // One renderer per page: media only ever opens from the record
+                // drawer, so a single id is enough.
+                mediaRendererId: 'eyewitness-record',
+
+                snackbar: false,
+                snackMessage: '',
+
+                statuses: ['Draft', 'Under Review', 'Verified', 'Archived'],
+
+                // Autocomplete option lists, filled on demand from the same
+                // endpoints the rest of Bayanat uses.
+                eventOptions: [], loadingEvents: false,
+                actorOptions: [], loadingActors: false,
+                locationOptions: [], loadingLocations: false,
+                labelOptions: [], loadingLabels: false,
+                bulletinOptions: [], loadingBulletins: false,
+                evidenceOptions: [], loadingEvidence: false,
+                fieldDataOptions: [], loadingFieldData: false,
+
+                // The list stays deliberately short: where, when, how many and
+                // what state. Item, device and username identify a capture once
+                // it is open, and are searchable, but they are not what anyone
+                // scans the list by.
+                headers: [
+                    {title: "{{ _('Location') }}", value: 'location_name', sortable: false},
+                    {title: "{{ _('Date of capture') }}", value: 'date_of_capture', sortable: false, width: 180},
+                    {title: "{{ _('Status') }}", value: 'status', sortable: false, width: 140},
+                    {title: "{{ _('Items') }}", value: 'number_of_items', sortable: false, width: 100},
+                ],
+            }),
+
+            computed: {
+                pageCount() {
+                    return Math.max(1, Math.ceil(this.itemsLength / this.perPage));
+                },
+
+                activeFilterCount() {
+                    return Object.values(this.q || {})
+                        .filter(v => v !== null && v !== undefined && v !== '' && v !== false)
+                        .length;
+                },
+
+                selectedUploadCount() {
+                    return this.normalizedUploads.length;
+                },
+
+                normalizedUploads() {
+                    const v = this.mediaUploads;
+                    if (!v) return [];
+                    return Array.isArray(v) ? v : [v];
+                },
+
+                // Grouped so the drawer reads as a record rather than a dump of
+                // columns. Linked entities show their title, not their id.
+                infoGroups() {
+                    const c = this.current;
+                    const names = (list) => (list || []).map(i => i.title).filter(Boolean).join(', ');
+                    return [
+                        {
+                            title: "{{ _('Item and device') }}",
+                            rows: [
+                                {label: "{{ _('Item ID') }}", value: c.item_id},
+                                {label: "{{ _('Number of items') }}", value: c.number_of_items},
+                                {label: "{{ _('Device ID') }}", value: c.device_id},
+                                {label: "{{ _('Username') }}", value: c.username},
+                            ],
+                        },
+                        {
+                            title: "{{ _('Alleged event') }}",
+                            rows: [
+                                {label: "{{ _('Alleged event') }}", value: c.alleged_event ? c.alleged_event.title : null},
+                                {label: "{{ _('Alleged perpetrator') }}", value: names(c.alleged_perpetrators)},
+                                {label: "{{ _('Event description') }}", value: c.event_description},
+                                {label: "{{ _('User notes') }}", value: c.user_notes},
+                            ],
+                        },
+                        {
+                            title: "{{ _('Capture') }}",
+                            rows: [
+                                {label: "{{ _('Date of capture') }}", value: c.date_of_capture},
+                                {label: "{{ _('Location') }}", value: c.location_name},
+                                {label: "{{ _('Site (Field Data)') }}", value: c.site_name},
+                                {label: "{{ _('Location of capture') }}", value: c.capture_location ? (c.capture_location.full_string || c.capture_location.title) : null},
+                                {label: "{{ _('District') }}", value: c.district},
+                                {label: "{{ _('Governorate') }}", value: c.governorate},
+                                {label: "{{ _('District – Governorate') }}", value: c.district_governorate},
+                                {label: "{{ _('GPS') }}", value: c.geo ? `${c.geo.lat}, ${c.geo.lng}` : null},
+                            ],
+                        },
+                        {
+                            title: "{{ _('Links') }}",
+                            rows: [
+                                {label: "{{ _('Tags used') }}", value: names(c.tags)},
+                                {label: "{{ _('Case / Bulletin') }}", value: names(c.bulletins)},
+                                {label: "{{ _('Related evidence') }}", value: (c.evidence_items || []).map(e => e.title).join(', ')},
+                                {label: "{{ _('Field Data site') }}", value: (c.field_data || []).map(f => f.title).join(', ')},
+                                {label: "{{ _('Status') }}", value: c.status},
+                            ],
+                        },
+                    ];
+                },
+            },
+
+            methods: {
+                showSnack(message) {
+                    this.snackMessage = message;
+                    this.snackbar = true;
+                },
+
+                statusColor(value) {
+                    return {
+                        'Draft': 'grey',
+                        'Under Review': 'orange',
+                        'Verified': 'green',
+                        'Archived': 'blue-grey',
+                    }[value] || 'grey';
+                },
+
+                mediaIcon(media) {
+                    const type = (media?.fileType || '').toLowerCase();
+                    const name = (media?.filename || '').toLowerCase();
+                    if (type.startsWith('image')) return 'mdi-file-image-outline';
+                    if (type.startsWith('video')) return 'mdi-file-video-outline';
+                    if (type.startsWith('audio')) return 'mdi-file-music-outline';
+                    if (type.includes('pdf') || name.endsWith('.pdf')) return 'mdi-file-pdf-box';
+                    if (type.includes('word') || /\.docx?$/.test(name)) return 'mdi-file-word-outline';
+                    return 'mdi-file-outline';
+                },
+
+                search() {
+                    this.page = 1;
+                    this.refresh();
+                },
+
+                resetSearch() {
+                    this.q = {};
+                    this.search();
+                },
+
+                doAdvSearch() {
+                    this.advSearchExpand = false;
+                    this.search();
+                },
+
+                refresh() {
+                    this.loading = true;
+                    axios.post('/admin/api/eyewitness/', {
+                        page: this.page,
+                        per_page: this.perPage,
+                        q: this.q,
+                    })
+                        .then(response => {
+                            this.items = response.data.items || [];
+                            this.itemsLength = response.data.total || 0;
+                        })
+                        .catch(() => this.showSnack("{{ _('Could not load capture records') }}"))
+                        .finally(() => { this.loading = false; });
+                },
+
+                rowClick(e, row) {
+                    this.openRecord(row.item.id);
+                },
+
+                openRecord(id) {
+                    this.drawerOpen = true;
+                    this.detailLoading = true;
+                    this.tab = 'info';
+                    axios.get(`/admin/api/eyewitness/${id}`)
+                        .then(response => { this.current = response.data || {}; })
+                        .catch(() => this.showSnack("{{ _('Could not open this capture') }}"))
+                        .finally(() => { this.detailLoading = false; });
+                },
+
+                openEvidence(id) {
+                    window.open(`/admin/evidence/${id}`, '_blank');
+                },
+
+                newItem() {
+                    this.edited = {status: 'Draft'};
+                    this.editDialog = true;
+                },
+
+                editCurrent() {
+                    this.edited = JSON.parse(JSON.stringify(this.current));
+                    this.editDialog = true;
+                },
+
+                saveItem() {
+                    this.saving = true;
+                    const isNew = !this.edited.id;
+                    const req = isNew
+                        ? axios.post('/admin/api/eyewitness/create', {item: this.edited})
+                        : axios.put(`/admin/api/eyewitness/${this.edited.id}`, {item: this.edited});
+
+                    req.then(response => {
+                        this.showSnack(response.data?.message || "{{ _('Saved') }}");
+                        this.editDialog = false;
+                        this.refresh();
+                        const saved = response.data?.item;
+                        if (saved) this.openRecord(saved.id);
+                    })
+                        .catch(err => {
+                            this.showSnack(err?.response?.data?.message || "{{ _('Could not save this capture') }}");
+                        })
+                        .finally(() => { this.saving = false; });
+                },
+
+                async attachFiles() {
+                    const files = this.normalizedUploads;
+                    if (!this.current?.id || !files.length) return;
+
+                    this.uploadingMedia = true;
+                    const failures = [];
+                    let attached = 0;
+
+                    for (const file of files) {
+                        try {
+                            const form = new FormData();
+                            form.append('file', file);
+                            const upload = await axios.post('/admin/api/media/upload/', form, {
+                                headers: {'content-type': false},
+                                suppressGlobalErrorHandler: true,
+                            });
+                            await axios.post(`/admin/api/eyewitness/${this.current.id}/media`, {
+                                filename: upload.data?.filename,
+                                etag: upload.data?.etag,
+                                fileType: file.type || 'application/octet-stream',
+                                title: file.name,
+                            }, {suppressGlobalErrorHandler: true});
+                            attached++;
+                        } catch (err) {
+                            failures.push(`${file.name}: ${err?.response?.data?.message || "{{ _('upload failed') }}"}`);
+                        }
+                    }
+
+                    this.uploadingMedia = false;
+                    this.mediaUploads = [];
+                    if (attached) this.openRecord(this.current.id);
+                    this.showSnack(failures.length ? failures.join(' | ') : "{{ _('Files attached') }}");
+                },
+
+                detachMedia(media) {
+                    if (!this.current?.id || !media?.id) return;
+                    axios.delete(`/admin/api/eyewitness/${this.current.id}/media/${media.id}`)
+                        .then(() => {
+                            this.showSnack("{{ _('File unlinked') }}");
+                            this.openRecord(this.current.id);
+                        })
+                        .catch(() => this.showSnack("{{ _('Could not unlink this file') }}"));
+                },
+
+                // --- autocomplete loaders -------------------------------
+                // Each hits the entity's own search endpoint so the options are
+                // the same records the rest of Bayanat offers.
+                lookup(url, payload, listKey, loadingKey, map) {
+                    this[loadingKey] = true;
+                    return axios.post(url, payload)
+                        .then(response => {
+                            const items = response.data?.items || [];
+                            this[listKey] = items.map(map);
+                        })
+                        .catch(() => { this[listKey] = []; })
+                        .finally(() => { this[loadingKey] = false; });
+                },
+
+                searchEvents(term) {
+                    this.lookup('/admin/api/events/', {q: {title: term || ''}, per_page: 20},
+                        'eventOptions', 'loadingEvents',
+                        e => ({id: e.id, title: e.title || `#${e.id}`}));
+                },
+
+                searchActors(term) {
+                    this.lookup('/admin/api/actors/', {q: [{tsv: term || ''}], per_page: 20},
+                        'actorOptions', 'loadingActors',
+                        a => ({id: a.id, title: a.name || a.title || `#${a.id}`}));
+                },
+
+                searchLocations(term) {
+                    this.lookup('/admin/api/locations/', {q: {title: term || ''}, per_page: 20},
+                        'locationOptions', 'loadingLocations',
+                        l => ({id: l.id, title: l.full_string || l.full_location || l.title}));
+                },
+
+                searchLabels(term) {
+                    this.lookup('/admin/api/labels/', {q: {title: term || ''}, per_page: 20},
+                        'labelOptions', 'loadingLabels',
+                        l => ({id: l.id, title: l.title}));
+                },
+
+                searchBulletins(term) {
+                    this.lookup('/admin/api/bulletins/', {q: [{tsv: term || ''}], per_page: 20},
+                        'bulletinOptions', 'loadingBulletins',
+                        b => ({id: b.id, title: b.title || `#${b.id}`}));
+                },
+
+                searchEvidence(term) {
+                    this.lookup('/admin/api/evidence/', {q: {text: term || ''}, per_page: 20},
+                        'evidenceOptions', 'loadingEvidence',
+                        e => ({id: e.id, title: e.evidence_number, case_code: e.case_code}));
+                },
+
+                // Field data is a GET with query params, not a POST body like
+                // the others, so it does not go through `lookup`.
+                searchFieldData(term) {
+                    this.loadingFieldData = true;
+                    axios.get('/admin/api/field-data/', {
+                        params: {q: term || '', per_page: 20},
+                    })
+                        .then(response => {
+                            const items = response.data?.items || [];
+                            this.fieldDataOptions = items.map(f => ({
+                                id: f.id,
+                                title: f.name_of_site || f.code || `#${f.id}`,
+                                code: f.code,
+                            }));
+                        })
+                        .catch(() => { this.fieldDataOptions = []; })
+                        .finally(() => { this.loadingFieldData = false; });
+                },
+            },
+
+            mounted() {
+                this.refresh();
+
+                // /admin/eyewitness/<id> opens that capture straight away. Field
+                // Data links here, so landing on a bare list would lose the
+                // record the user actually clicked.
+                const match = window.location.pathname.match(/\/admin\/eyewitness\/(\d+)/);
+                if (match) this.openRecord(parseInt(match[1], 10));
+            },
+        });
+
+        app.component('InlineMediaRenderer', InlineMediaRenderer);
+        app.component('ImageViewer', ImageViewer);
+        app.component('PdfViewer', PdfViewer);
+        app.component('DocxViewer', DocxViewer);
+        app.component('DownloadCodeDialog', DownloadCodeDialog);
+        app.component('DownloadRequestButton', DownloadRequestButton);
+        app.component('MediaThumbnail', MediaThumbnail);
+        app.component('MediaCard', MediaCard);
+        app.component('MediaGrid', MediaGrid);
+        app.component('GeoMap', GeoMap);
+
+        app.use(vuetify).use(router);
+        router.isReady().then(() => {
+            app.mount('#app');
+        });
+    </script>
+{% endblock %}

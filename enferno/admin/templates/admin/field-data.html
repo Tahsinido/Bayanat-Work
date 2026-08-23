@@ -1,4 +1,41 @@
-{% extends 'layout.html' %} {% block content %}
+{% extends 'layout.html' %}
+
+{# Styles belong in the head block, never inside `content`: `content` renders
+   inside #app and Vue's compiler drops <style> elements from that subtree. #}
+{% block css %}
+    <style>
+        .ew-table {
+            border: 1px solid rgba(var(--v-border-color), 0.28);
+        }
+
+        .ew-table__row {
+            display: grid;
+            grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) minmax(0, 1fr) 70px 48px;
+            align-items: center;
+        }
+
+        .ew-table__row + .ew-table__row {
+            border-top: 1px solid rgba(var(--v-border-color), 0.28);
+        }
+
+        .ew-table__row > * {
+            padding: 6px 10px;
+            min-width: 0;
+            word-break: break-word;
+        }
+
+        .ew-table__row > * + * {
+            border-left: 1px solid rgba(var(--v-border-color), 0.28);
+        }
+
+        .ew-table__row--head {
+            background: rgba(var(--v-border-color), 0.05);
+            font-weight: 600;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
 {# Snippet styling lives in static/css/app.css, shared with Bulletin results. #}
 
 <v-main>
@@ -11,10 +48,10 @@
                     ${viewerMedia.media?.title || viewerMedia.media?.filename}
                 </v-toolbar-title>
                 <v-spacer></v-spacer>
-                <v-btn v-if="viewerMedia.media?.filename"
-                       icon="mdi-download"
-                       :href="`/admin/api/serve/media/${viewerMedia.media.filename}`"
-                       target="_blank" rel="noopener"></v-btn>
+                <!-- The download control lives in inline-media-renderer's own
+                     toolbar below, so every page offers it identically. This
+                     used to be a direct link to /admin/api/serve/media/<file>,
+                     which handed over the raw bytes and bypassed approval. -->
                 <v-btn icon="mdi-close" @click="closeViewer"></v-btn>
             </v-toolbar>
             <inline-media-renderer
@@ -625,6 +662,76 @@
                                                 {{ _('No media attached yet.') }}
                                             </div>
 
+                                            <!-- Captures belonging to this site
+                                                 visit. A capture is recorded
+                                                 against the mission that
+                                                 produced it, so it lives here
+                                                 rather than in a section of its
+                                                 own. Only offered once the
+                                                 record exists, because a capture
+                                                 needs something to link to. -->
+                                            <div class="text-overline text-medium-emphasis mt-6">
+                                                {{ _('Eyewitness') }}
+                                            </div>
+
+                                            <div v-if="!editedItem.id"
+                                                 class="text-medium-emphasis text-caption mb-2">
+                                                {{ _('Save this record first, then captures can be recorded against it.') }}
+                                            </div>
+
+                                            <template v-else>
+                                                <div class="d-flex align-center mb-2">
+                                                    <span class="text-caption text-medium-emphasis">
+                                                        ${ eyewitnessItems.length }
+                                                        {{ _('capture(s) recorded against this site visit') }}
+                                                    </span>
+                                                    <v-spacer></v-spacer>
+                                                    <v-btn size="small" color="primary" variant="tonal"
+                                                           prepend-icon="mdi-plus"
+                                                           :loading="creatingCapture"
+                                                           @click="newCapture">
+                                                        {{ _('New Capture') }}
+                                                    </v-btn>
+                                                </div>
+
+                                                <v-progress-linear v-if="loadingEyewitness" indeterminate
+                                                                   class="mb-2"></v-progress-linear>
+
+                                                <!-- Divs, not <v-table>/<tr>/<td>: this template is
+                                                     parsed from the DOM, and the HTML parser discards
+                                                     table tags that are not inside a real <table>,
+                                                     taking their v-for with them. -->
+                                                <div v-if="eyewitnessItems.length" class="ew-table mb-2">
+                                                    <div class="ew-table__row ew-table__row--head text-caption">
+                                                        <div>{{ _('Location') }}</div>
+                                                        <div>{{ _('Date of capture') }}</div>
+                                                        <div>{{ _('Status') }}</div>
+                                                        <div>{{ _('Items') }}</div>
+                                                        <div></div>
+                                                    </div>
+                                                    <div v-for="c in eyewitnessItems" :key="c.id"
+                                                         class="ew-table__row text-body-2">
+                                                        <div>
+                                                            ${ c.location_name || '—' }
+                                                            <v-icon v-if="c.geo" size="x-small"
+                                                                    icon="mdi-map-marker" color="primary"></v-icon>
+                                                        </div>
+                                                        <div>${ c.date_of_capture || '—' }</div>
+                                                        <div>${ c.status }</div>
+                                                        <div>${ c.number_of_items ?? '—' }</div>
+                                                        <div class="text-right">
+                                                            <v-btn size="x-small" variant="text"
+                                                                   icon="mdi-open-in-new"
+                                                                   @click="openCapture(c.id)"></v-btn>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div v-else-if="!loadingEyewitness"
+                                                     class="text-medium-emphasis text-caption mb-2">
+                                                    {{ _('No captures recorded against this site visit yet.') }}
+                                                </div>
+                                            </template>
+
                                             <v-alert
                                                     v-if="editedItem.modified_last_by"
                                                     type="info"
@@ -674,7 +781,10 @@
                     </template>
 
                     <template v-slot:item.action="{ item }">
-                        {% if current_user.roles_in(['Admin','Mod','DA']) %}
+                        {# Admin only, matching the API. Field data is treated as
+                           append-only: Mod and DA collect records but cannot
+                           rewrite ones already filed. #}
+                        {% if current_user.has_role('Admin') %}
                         <v-icon small @click="editItem(item)">mdi-pencil</v-icon>
                         {% endif %}
                     </template>
@@ -695,12 +805,13 @@
 <script src="/static/js/components/SearchField.js?v={{ config.VERSION }}"></script>
 <script src="/static/js/components/UniField.js?v={{ config.VERSION }}"></script>
 <script src="/static/js/components/MediaGrid.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/DownloadCodeDialog.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/DownloadRequestButton.js?v={{ config.VERSION }}"></script>
 <script src="/static/js/components/MediaCard.js?v={{ config.VERSION }}"></script>
 <script src="/static/js/components/MediaThumbnail.js?v={{ config.VERSION }}"></script>
 <script src="/static/js/components/InlineMediaRenderer.js?v={{ config.VERSION }}"></script>
 <script src="/static/js/components/ImageViewer.js?v={{ config.VERSION }}"></script>
 <script src="/static/js/components/PdfViewer.js?v={{ config.VERSION }}"></script>
-<script src="/static/js/components/NativePdfViewer.js?v={{ config.VERSION }}"></script>
 <script src="/static/js/components/DocxViewer.js?v={{ config.VERSION }}"></script>
 <script nonce="{{ csp_nonce() }}">
 
@@ -813,10 +924,20 @@
             items: [],
             itemsLength: 0,
             editedIndex: -1,
+
+            // Eyewitness captures linked to the record currently open.
+            eyewitnessItems: [],
+            loadingEyewitness: false,
+            creatingCapture: false,
             editedItem: Object.assign({}, FIELD_DATA_DEFAULT)
         }),
 
         computed: {
+            // Server-rendered flag; when approval is off the button falls back
+            // to a plain download.
+            downloadGated() {
+                return window.__DOWNLOAD_APPROVAL__ !== false;
+            },
             formTitle() {
                 return this.editedIndex === -1 ? "{{ _('New Item') }}" : "{{ _('Edit Item') }}";
             },
@@ -834,7 +955,7 @@
                         sortable: false, width: 460
                     });
                 }
-                {% if current_user.roles_in(['Admin','Mod','DA']) %}
+                {% if current_user.has_role('Admin') %}
                 cols.push({title: "{{ _('Actions') }}", value: "action", sortable: false, width: 90});
                 {% endif %}
                 return cols;
@@ -930,7 +1051,47 @@
                     });
                     this.descKey++;
                     this.dialog = true;
+                    this.loadEyewitness(item.id);
                 });
+            },
+
+            // Captures for this site visit. Filtered server-side by the link,
+            // so it stays correct however many captures exist overall.
+            loadEyewitness(fieldDataId) {
+                this.eyewitnessItems = [];
+                if (!fieldDataId) return;
+                this.loadingEyewitness = true;
+                api.post('/admin/api/eyewitness/', {
+                    per_page: 100,
+                    q: {field_data_id: fieldDataId},
+                })
+                    .then(response => { this.eyewitnessItems = response.data?.items || []; })
+                    .catch(() => { this.eyewitnessItems = []; })
+                    .finally(() => { this.loadingEyewitness = false; });
+            },
+
+            // Create the capture already linked to this site visit, then open it
+            // in its own tab so the field-data record stays put underneath.
+            newCapture() {
+                if (!this.editedItem.id) return;
+                this.creatingCapture = true;
+                api.post('/admin/api/eyewitness/create', {
+                    item: {
+                        status: 'Draft',
+                        field_data: [{id: this.editedItem.id}],
+                    },
+                })
+                    .then(response => {
+                        const created = response.data?.item;
+                        this.loadEyewitness(this.editedItem.id);
+                        if (created) this.openCapture(created.id);
+                    })
+                    .catch(() => this.showSnack("{{ _('Could not create the capture') }}"))
+                    .finally(() => { this.creatingCapture = false; });
+            },
+
+            openCapture(id) {
+                window.open(`/admin/eyewitness/${id}`, '_blank');
             },
 
             blankItem() {
@@ -1227,12 +1388,13 @@
     app.component('LocationSearchField', LocationSearchField);
     app.component('UniField', UniField);
     app.component('MediaGrid', MediaGrid);
+    app.component('DownloadCodeDialog', DownloadCodeDialog);
+    app.component('DownloadRequestButton', DownloadRequestButton);
     app.component('MediaCard', MediaCard);
     app.component('MediaThumbnail', MediaThumbnail);
     app.component('InlineMediaRenderer', InlineMediaRenderer);
     app.component('ImageViewer', ImageViewer);
     app.component('PdfViewer', PdfViewer);
-    app.component('NativePdfViewer', NativePdfViewer);
     app.component('DocxViewer', DocxViewer);
 
     app.use(router).use(vuetify);

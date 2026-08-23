@@ -10,6 +10,13 @@
                      key="incidents"></v-list-item>
 
         {% if current_user.has_role('Admin') or current_user.has_role('Mod') or current_user.has_role('DA') %}
+            <v-list-item prepend-icon="mdi-archive-lock" title="{{ _('Evidence') }}"
+                         href="/admin/evidence/" key="evidence"></v-list-item>
+
+            {# Eyewitness has no entry of its own: captures are recorded against
+               the field-data site visit that produced them, and are reached
+               from inside that record. #}
+
             <v-list-item prepend-icon="mdi-clipboard-text-search" title="{{ _('Field Data') }}"
                          href="/admin/field-data/" key="field-data"></v-list-item>
 
@@ -79,6 +86,11 @@
         {% endif %}
 
         {% if current_user.has_role("Admin") %}
+
+            {% if config.DOWNLOAD_APPROVAL_ENABLED %}
+                <v-list-item prepend-icon="mdi-download-lock" title="{{ _('Download Requests') }}"
+                             href="/admin/download-requests/" key="download-requests"></v-list-item>
+            {% endif %}
 
             <v-list-item prepend-icon="mdi-pulse" title="{{ _('Activity') }}" href="/admin/activity/"
                             key="activity"></v-list-item>

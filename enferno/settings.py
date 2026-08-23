@@ -215,6 +215,42 @@ class Config(object):
     # Enable data deduplication tool
     DEDUP_TOOL = manager.get_config("DEDUP_TOOL")
 
+    # Admin-approved, code-verified downloads. Releasing a copy of a file takes
+    # two people: an admin approves and is shown a one-time code, which reaches
+    # the requester out of band and has to come back before the file is served.
+    DOWNLOAD_APPROVAL_ENABLED = (
+        os.environ.get("DOWNLOAD_APPROVAL_ENABLED", "").lower() == "true"
+        if os.environ.get("DOWNLOAD_APPROVAL_ENABLED")
+        else bool(manager.get_config("DOWNLOAD_APPROVAL_ENABLED"))
+    )
+    DOWNLOAD_CODE_LENGTH = int(
+        os.environ.get("DOWNLOAD_CODE_LENGTH") or manager.get_config("DOWNLOAD_CODE_LENGTH") or 8
+    )
+    DOWNLOAD_CODE_TTL_MINUTES = int(
+        os.environ.get("DOWNLOAD_CODE_TTL_MINUTES")
+        or manager.get_config("DOWNLOAD_CODE_TTL_MINUTES")
+        or 15
+    )
+    DOWNLOAD_CODE_MAX_ATTEMPTS = int(
+        os.environ.get("DOWNLOAD_CODE_MAX_ATTEMPTS")
+        or manager.get_config("DOWNLOAD_CODE_MAX_ATTEMPTS")
+        or 5
+    )
+    DOWNLOAD_REQUEST_EXPIRY_HOURS = int(
+        os.environ.get("DOWNLOAD_REQUEST_EXPIRY_HOURS")
+        or manager.get_config("DOWNLOAD_REQUEST_EXPIRY_HOURS")
+        or 24
+    )
+
+    # Stamped across every media preview. A screenshot of a record is the one
+    # copy the download gate cannot stop, so the organisation name travels with
+    # whatever is on screen. Set to an empty string to turn the stamp off.
+    MEDIA_WATERMARK_TEXT = (
+        os.environ.get("MEDIA_WATERMARK_TEXT")
+        if os.environ.get("MEDIA_WATERMARK_TEXT") is not None
+        else (manager.get_config("MEDIA_WATERMARK_TEXT") or "Yazda")
+    )
+
     # Semantic (meaning-based) bulletin search. The threshold is the minimum
     # cosine similarity a bulletin must reach to be shown at all; max results
     # caps the page. Environment wins over config.json so a deployment can tune
@@ -515,6 +551,14 @@ class TestConfig:
         "CREATE": True,
         "DELETE": True,
         "DOWNLOAD": True,
+        "REQUEST-DOWNLOAD": True,
+        "APPROVE-DOWNLOAD": True,
+        "REJECT-DOWNLOAD": True,
+        "EVIDENCE-CREATE": True,
+        "EVIDENCE-UPDATE": True,
+        "EVIDENCE-VIEW": True,
+        "EVIDENCE-ARCHIVE": True,
+        "CUSTODY-ADD": True,
         "LOGIN": True,
         "LOGOUT": True,
         "REJECT": True,
@@ -549,6 +593,12 @@ class TestConfig:
     EXPORT_TOOL = False
     EXPORT_DEFAULT_EXPIRY = timedelta(hours=2)
     DEDUP_TOOL = False
+    DOWNLOAD_APPROVAL_ENABLED = True
+    DOWNLOAD_CODE_LENGTH = 8
+    DOWNLOAD_CODE_TTL_MINUTES = 15
+    DOWNLOAD_CODE_MAX_ATTEMPTS = 5
+    DOWNLOAD_REQUEST_EXPIRY_HOURS = 24
+    MEDIA_WATERMARK_TEXT = "Yazda"
     SEMANTIC_SEARCH_THRESHOLD = 0.65
     SEMANTIC_SEARCH_MAX_RESULTS = 20
     DEDUP_LOW_DISTANCE = 0.3

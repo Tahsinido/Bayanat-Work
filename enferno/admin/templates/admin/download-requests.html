@@ -1,0 +1,227 @@
+{% extends 'layout.html' %}
+{% block content %}
+
+    <v-main>
+        <v-container fluid>
+            <v-card>
+                <v-card-text>
+
+                    <v-data-table-server
+                            fixed-header
+                            height="calc(100vh - 290px)"
+                            id="download-requests-dt"
+                            :headers="headers"
+                            :items="items"
+                            :loading="loading"
+                            :items-length="itemsLength"
+                            item-value="id"
+                            class="elevation-1"
+                    >
+
+                        <template #top>
+                            <v-sheet class="ma-3 d-flex align-center">
+                                <v-btn-toggle v-model="statusFilter" divided variant="outlined"
+                                              density="compact" color="primary" mandatory
+                                              @update:model-value="refresh">
+                                    <v-btn value="">{{ _('All') }}</v-btn>
+                                    <v-btn value="Pending">{{ _('Pending') }}</v-btn>
+                                    <v-btn value="Approved">{{ _('Approved') }}</v-btn>
+                                    <v-btn value="Fulfilled">{{ _('Downloaded') }}</v-btn>
+                                    <v-btn value="Rejected">{{ _('Rejected') }}</v-btn>
+                                </v-btn-toggle>
+                                <v-spacer></v-spacer>
+                                <v-btn variant="text" icon="mdi-refresh" @click="refresh"></v-btn>
+                            </v-sheet>
+                        </template>
+
+                        <template #['item.file']="{ item }">
+                            <div class="text-body-2">${ item.media?.title || item.media?.filename || '—' }</div>
+                            <div class="text-caption text-disabled">${ item.media?.filename }</div>
+                        </template>
+
+                        <template #['item.requester']="{ item }">
+                            ${ item.requester?.name || item.requester?.username || '—' }
+                        </template>
+
+                        <template #['item.reason']="{ item }">
+                            <div class="reason-cell">${ item.reason }</div>
+                        </template>
+
+                        <template #['item.status']="{ item }">
+                            <v-chip size="small" variant="flat" :color="statusColor(item)">
+                                ${ statusLabel(item) }
+                            </v-chip>
+                        </template>
+
+                        <template #['item.created_at']="{ item }">
+                            <span class="text-caption">${ item.created_at }</span>
+                        </template>
+
+                        <template #['item.actions']="{ item }">
+                            <div v-if="item.status === 'Pending'" class="d-flex ga-1">
+                                <v-btn size="small" variant="tonal" color="success"
+                                       :loading="acting === item.id"
+                                       @click="review(item, 'approve')">{{ _('Approve') }}</v-btn>
+                                <v-btn size="small" variant="text" color="error"
+                                       :loading="acting === item.id"
+                                       @click="review(item, 'reject')">{{ _('Reject') }}</v-btn>
+                            </div>
+                            <span v-else class="text-caption text-disabled">
+                                ${ item.reviewer ? (item.reviewer.name || item.reviewer.username) : '—' }
+                            </span>
+                        </template>
+
+                    </v-data-table-server>
+
+                    <div class="d-flex justify-end pa-3">
+                        <v-pagination v-model="page" :length="pageCount" density="compact"
+                                      @update:model-value="refresh"></v-pagination>
+                    </div>
+
+                </v-card-text>
+            </v-card>
+        </v-container>
+    </v-main>
+
+    <issued-code-dialog
+            v-model="issuedCodeOpen"
+            :code="issuedCode"
+            :recipient="issuedCodeFor"
+    ></issued-code-dialog>
+
+    <v-snackbar v-model="snackbar" :timeout="4000">${ snackMessage }</v-snackbar>
+
+{% endblock %}
+
+{% block js %}
+    <script src="/static/js/components/IssuedCodeDialog.js?v={{ config.VERSION }}"></script>
+
+    <script>
+        const {createApp} = Vue;
+        const {createVuetify} = Vuetify;
+        const vuetify = createVuetify(vuetifyConfig);
+
+        const app = createApp({
+            delimiters: delimiters,
+            mixins: [globalMixin],
+
+            data: () => ({
+                translations: window.translations,
+                currentUser: JSON.parse(`{{ current_user.to_dict()|tojson }}`),
+                drawer: drawer,
+                loading: false,
+                acting: null,
+                items: [],
+                itemsLength: 0,
+                page: 1,
+                perPage: 30,
+                statusFilter: '',
+                snackbar: false,
+                snackMessage: '',
+
+                // The issued code is shown once, right after approval.
+                issuedCodeOpen: false,
+                issuedCode: '',
+                issuedCodeFor: '',
+
+                headers: [
+                    {title: "{{_('ID')}}", value: 'id', sortable: false, width: 70},
+                    {title: "{{_('File')}}", value: 'file', sortable: false},
+                    {title: "{{_('Requester')}}", value: 'requester', sortable: false},
+                    {title: "{{_('Reason')}}", value: 'reason', sortable: false},
+                    {title: "{{_('Requested')}}", value: 'created_at', sortable: false},
+                    {title: "{{_('Status')}}", value: 'status', sortable: false},
+                    {title: "{{_('Actions')}}", value: 'actions', sortable: false, width: 190},
+                ],
+            }),
+
+            computed: {
+                pageCount() {
+                    return Math.max(1, Math.ceil(this.itemsLength / this.perPage));
+                },
+            },
+
+            mounted() {
+                this.refresh();
+            },
+
+            methods: {
+                showSnack(message) {
+                    this.snackMessage = message;
+                    this.snackbar = true;
+                },
+
+                // An approval can lapse without anyone touching it, so the
+                // label reflects what the row can actually still do.
+                statusLabel(item) {
+                    if (item.status === 'Approved' && item.expired) return "{{ _('Expired') }}";
+                    if (item.status === 'Approved' && item.locked) return "{{ _('Locked') }}";
+                    return item.status;
+                },
+
+                statusColor(item) {
+                    if (item.status === 'Approved' && (item.expired || item.locked)) return 'grey';
+                    return {
+                        Pending: 'warning',
+                        Approved: 'success',
+                        Rejected: 'error',
+                        Fulfilled: 'primary',
+                    }[item.status] || 'grey';
+                },
+
+                refresh() {
+                    this.loading = true;
+                    axios.post('/admin/api/download-requests/list', {
+                        page: this.page,
+                        per_page: this.perPage,
+                        status: this.statusFilter || undefined,
+                    })
+                        .then(response => {
+                            this.items = response.data.items || [];
+                            this.itemsLength = response.data.total || 0;
+                        })
+                        .catch(() => this.showSnack("{{ _('Could not load download requests') }}"))
+                        .finally(() => {
+                            this.loading = false;
+                        });
+                },
+
+                review(item, action) {
+                    this.acting = item.id;
+                    axios.put('/admin/api/download-requests/status', {
+                        requestId: item.id,
+                        action: action,
+                    }, {suppressGlobalErrorHandler: true})
+                        .then(response => {
+                            const code = response.data?.code;
+                            if (code) {
+                                // Only moment this exists in readable form.
+                                this.issuedCode = code;
+                                this.issuedCodeFor = item.requester?.name
+                                    || item.requester?.username || '';
+                                this.issuedCodeOpen = true;
+                            } else {
+                                this.showSnack(response.data?.message || 'Done');
+                            }
+                            this.refresh();
+                        })
+                        .catch(err => {
+                            this.showSnack(err?.response?.data?.message
+                                || "{{ _('Could not update the request') }}");
+                        })
+                        .finally(() => {
+                            this.acting = null;
+                        });
+                },
+            },
+        });
+
+        app.component('IssuedCodeDialog', IssuedCodeDialog);
+
+        app.use(router).use(vuetify);
+        router.isReady().then(() => {
+            app.mount('#app');
+            window.app = app;
+        });
+    </script>
+{% endblock %}

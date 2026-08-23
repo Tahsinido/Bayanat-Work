@@ -39,3 +39,6 @@ bayanat-release.pub
 
 # Auto-generated local tooling scan (contains local machine paths)
 .claude/cloude-code-toolbox-mcp-skills-awareness.md
+
+# Claude Code local settings and generated reports
+.claude/

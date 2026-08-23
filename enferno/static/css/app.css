@@ -1023,3 +1023,42 @@ div.jsondiffpatch-child-node-type-array:after {
     border-radius: 2px;
     font-weight: 600;
 }
+
+/* ---------------------------------------------------------------------------
+   In-app document viewer
+
+   PDFs render to a canvas via PDF.js so the browser's own viewer -- and its
+   Download and Print buttons -- never appear. This rule removes the remaining
+   easy print route (Ctrl+P on the page).
+
+   DETERRENT, NOT DRM. It raises the effort required; it does not make a
+   document uncopyable. A viewer can still screenshot the screen, and the
+   decoded bytes necessarily exist in the browser. Treat it as a control
+   against casual redistribution, not a guarantee.
+   --------------------------------------------------------------------------- */
+@media print {
+    .pdf-viewer,
+    .pdf-viewer canvas {
+        display: none !important;
+    }
+
+    .pdf-viewer::after {
+        content: "This document cannot be printed. Request a copy through the download approval process.";
+        display: block;
+        padding: 2rem;
+        font-size: 12pt;
+    }
+}
+
+.download-code-field input {
+    font-family: monospace;
+    font-size: 1.25rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.download-code-display {
+    font-family: monospace;
+    letter-spacing: 0.22em;
+}
+

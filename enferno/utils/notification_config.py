@@ -90,6 +90,16 @@ NOTIFICATIONS_DEFAULT_CONFIG = {
         "email_enabled": False,
         "category": Constants.NotificationCategories.UPDATE.value,
     },
+    NotificationEvent.NEW_DOWNLOAD_REQUEST.value: {
+        "in_app_enabled": True,
+        "email_enabled": False,
+        "category": Constants.NotificationCategories.SECURITY.value,
+    },
+    NotificationEvent.DOWNLOAD_APPROVED.value: {
+        "in_app_enabled": True,
+        "email_enabled": False,
+        "category": Constants.NotificationCategories.SECURITY.value,
+    },
     NotificationEvent.NEW_BATCH.value: {
         "in_app_enabled": False,
         "email_enabled": False,

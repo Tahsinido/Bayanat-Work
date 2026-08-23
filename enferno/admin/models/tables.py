@@ -224,3 +224,159 @@ field_data_locations = db.Table(
     db.Index("ix_field_data_locations_field_data_id", "field_data_id"),
     extend_existing=True,
 )
+
+# ---------------------------------------------------------------------------
+# Evidence joint tables
+#
+# Evidence reuses Bayanat's existing vocabulary -- locations, sources, events,
+# actors, bulletins -- rather than carrying parallel free-text copies, so an
+# evidence record filed against a location is searchable alongside every other
+# record at that location.
+# ---------------------------------------------------------------------------
+
+# joint table: evidence <-> access-control roles
+evidence_roles = db.Table(
+    "evidence_roles",
+    db.Column("evidence_id", db.Integer, db.ForeignKey("evidence.id"), primary_key=True),
+    db.Column("role_id", db.Integer, db.ForeignKey("role.id"), primary_key=True),
+    db.Index("ix_evidence_roles_evidence_id", "evidence_id"),
+    db.Index("ix_evidence_roles_role_id", "role_id"),
+    extend_existing=True,
+)
+
+# joint table: the Case/Bulletin an evidence item belongs to
+evidence_bulletins = db.Table(
+    "evidence_bulletins",
+    db.Column("evidence_id", db.Integer, db.ForeignKey("evidence.id"), primary_key=True),
+    db.Column("bulletin_id", db.Integer, db.ForeignKey("bulletin.id"), primary_key=True),
+    db.Index("ix_evidence_bulletins_evidence_id", "evidence_id"),
+    db.Index("ix_evidence_bulletins_bulletin_id", "bulletin_id"),
+    extend_existing=True,
+)
+
+# joint table: persons/sources associated with the evidence
+evidence_actors = db.Table(
+    "evidence_actors",
+    db.Column("evidence_id", db.Integer, db.ForeignKey("evidence.id"), primary_key=True),
+    db.Column("actor_id", db.Integer, db.ForeignKey("actor.id"), primary_key=True),
+    db.Index("ix_evidence_actors_evidence_id", "evidence_id"),
+    db.Index("ix_evidence_actors_actor_id", "actor_id"),
+    extend_existing=True,
+)
+
+# joint table: relevant locations
+evidence_locations = db.Table(
+    "evidence_locations",
+    db.Column("evidence_id", db.Integer, db.ForeignKey("evidence.id"), primary_key=True),
+    db.Column("location_id", db.Integer, db.ForeignKey("location.id"), primary_key=True),
+    db.Index("ix_evidence_locations_evidence_id", "evidence_id"),
+    db.Index("ix_evidence_locations_location_id", "location_id"),
+    extend_existing=True,
+)
+
+# joint table: relevant events
+evidence_events = db.Table(
+    "evidence_events",
+    db.Column("evidence_id", db.Integer, db.ForeignKey("evidence.id"), primary_key=True),
+    db.Column("event_id", db.Integer, db.ForeignKey("event.id"), primary_key=True),
+    db.Index("ix_evidence_events_evidence_id", "evidence_id"),
+    db.Index("ix_evidence_events_event_id", "event_id"),
+    extend_existing=True,
+)
+
+# joint table: source information held as structured sources
+evidence_sources = db.Table(
+    "evidence_sources",
+    db.Column("evidence_id", db.Integer, db.ForeignKey("evidence.id"), primary_key=True),
+    db.Column("source_id", db.Integer, db.ForeignKey("source.id"), primary_key=True),
+    db.Index("ix_evidence_sources_evidence_id", "evidence_id"),
+    db.Index("ix_evidence_sources_source_id", "source_id"),
+    extend_existing=True,
+)
+
+# joint table: "related records" -- evidence linked to other evidence. Ordered
+# pair so the relationship can be read from either side.
+evidence_related = db.Table(
+    "evidence_related",
+    db.Column("evidence_id", db.Integer, db.ForeignKey("evidence.id"), primary_key=True),
+    db.Column("related_evidence_id", db.Integer, db.ForeignKey("evidence.id"), primary_key=True),
+    db.Index("ix_evidence_related_evidence_id", "evidence_id"),
+    db.Index("ix_evidence_related_related_id", "related_evidence_id"),
+    extend_existing=True,
+)
+
+
+# ----------------------------------------------------------------------
+# Eyewitness capture records
+#
+# An eyewitness record is the metadata a capture app hands over: who recorded
+# it, on what device, when and where. It links outward to the entities Bayanat
+# already holds rather than restating them, which is the point of the section --
+# the same perpetrator, event or location is described once and referenced from
+# every capture that touches it.
+# ----------------------------------------------------------------------
+
+# joint table: eyewitness <-> access-control roles
+eyewitness_roles = db.Table(
+    "eyewitness_roles",
+    db.Column("eyewitness_id", db.Integer, db.ForeignKey("eyewitness.id"), primary_key=True),
+    db.Column("role_id", db.Integer, db.ForeignKey("role.id"), primary_key=True),
+    db.Index("ix_eyewitness_roles_eyewitness_id", "eyewitness_id"),
+    db.Index("ix_eyewitness_roles_role_id", "role_id"),
+    extend_existing=True,
+)
+
+# joint table: the Case/Bulletin a capture belongs to
+eyewitness_bulletins = db.Table(
+    "eyewitness_bulletins",
+    db.Column("eyewitness_id", db.Integer, db.ForeignKey("eyewitness.id"), primary_key=True),
+    db.Column("bulletin_id", db.Integer, db.ForeignKey("bulletin.id"), primary_key=True),
+    db.Index("ix_eyewitness_bulletins_eyewitness_id", "eyewitness_id"),
+    db.Index("ix_eyewitness_bulletins_bulletin_id", "bulletin_id"),
+    extend_existing=True,
+)
+
+# joint table: alleged perpetrators, held as actors
+eyewitness_actors = db.Table(
+    "eyewitness_actors",
+    db.Column("eyewitness_id", db.Integer, db.ForeignKey("eyewitness.id"), primary_key=True),
+    db.Column("actor_id", db.Integer, db.ForeignKey("actor.id"), primary_key=True),
+    db.Index("ix_eyewitness_actors_eyewitness_id", "eyewitness_id"),
+    db.Index("ix_eyewitness_actors_actor_id", "actor_id"),
+    extend_existing=True,
+)
+
+# joint table: "tags used", held as the same labels the rest of Bayanat uses so
+# a tag typed on a phone is the same tag the archive already knows
+eyewitness_labels = db.Table(
+    "eyewitness_labels",
+    db.Column("eyewitness_id", db.Integer, db.ForeignKey("eyewitness.id"), primary_key=True),
+    db.Column("label_id", db.Integer, db.ForeignKey("label.id"), primary_key=True),
+    db.Index("ix_eyewitness_labels_eyewitness_id", "eyewitness_id"),
+    db.Index("ix_eyewitness_labels_label_id", "label_id"),
+    extend_existing=True,
+)
+
+# joint table: the evidence items this capture produced, so the exhibit's own
+# metadata never has to be retyped onto the capture
+eyewitness_evidence = db.Table(
+    "eyewitness_evidence",
+    db.Column("eyewitness_id", db.Integer, db.ForeignKey("eyewitness.id"), primary_key=True),
+    db.Column("evidence_id", db.Integer, db.ForeignKey("evidence.id"), primary_key=True),
+    db.Index("ix_eyewitness_evidence_eyewitness_id", "eyewitness_id"),
+    db.Index("ix_eyewitness_evidence_evidence_id", "evidence_id"),
+    extend_existing=True,
+)
+
+
+# joint table: the field-data site visit a capture came out of, so a mission's
+# own record of what was collected and a capture of it are two views of one
+# thing rather than two sets of retyped metadata
+eyewitness_field_data = db.Table(
+    "eyewitness_field_data",
+    db.Column("eyewitness_id", db.Integer, db.ForeignKey("eyewitness.id"), primary_key=True),
+    db.Column("field_data_id", db.Integer, db.ForeignKey("field_data.id"), primary_key=True),
+    db.Index("ix_eyewitness_field_data_eyewitness_id", "eyewitness_id"),
+    db.Index("ix_eyewitness_field_data_field_data_id", "field_data_id"),
+    extend_existing=True,
+)

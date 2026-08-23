@@ -24,10 +24,6 @@ const InlineMediaRenderer = Vue.defineComponent({
         type: Number,
         default: 0,
       },
-      usePdfCanvasRenderer: {
-        type: Boolean,
-        default: false,
-      },
     },
     emits: ['ready', 'fullscreen', 'close', 'orientation-changed'],
     data: () => ({
@@ -41,6 +37,13 @@ const InlineMediaRenderer = Vue.defineComponent({
         unknown: 'mdi-file-download'
       },
     }),
+    computed: {
+      // Server-rendered flag; mirrors MediaCard so both offer the same path.
+      downloadGated() {
+        return window.__DOWNLOAD_APPROVAL__ !== false;
+      },
+
+    },
     methods: {
       emitReady() {
         this.$nextTick(() => {
@@ -153,6 +156,17 @@ const InlineMediaRenderer = Vue.defineComponent({
             </div>
           </div>
           <v-spacer></v-spacer>
+          <!--
+            Lives here rather than on each page's own toolbar so every viewer --
+            bulletins, actors, incidents, field data, the media dashboard --
+            offers the same one route to a copy of the file.
+          -->
+          <download-request-button
+              v-if="media && media.id"
+              :media="media"
+              :gated="downloadGated"
+              :direct-url="media.s3url"
+          ></download-request-button>
           <v-btn @click="$emit('fullscreen')" icon="mdi-fullscreen" class="ml-2" size="small"></v-btn>
           <v-btn v-if="hideClose === false" icon="mdi-close" class="ml-2" size="small" @click="$emit('close')"></v-btn>
         </v-toolbar>
@@ -163,26 +177,34 @@ const InlineMediaRenderer = Vue.defineComponent({
             ref="playerContainer"
             class="h-100"
           ></div>
-          <pdf-viewer ref="pdfViewer" v-else-if="usePdfCanvasRenderer && mediaType === 'pdf'" :media="media" :media-type="mediaType" class="w-100 h-100"></pdf-viewer>
-          <native-pdf-viewer ref="pdfViewer" v-else-if="mediaType === 'pdf'" :media="media" :media-type="mediaType" class="w-100 h-100"></native-pdf-viewer>
+          <!--
+            PDFs always render through PDF.js onto a canvas. Handing the file to
+            the browser's built-in viewer (an <iframe src=...>) would come with
+            its own download and print buttons, and those act on bytes the
+            browser already holds -- nothing server-side can take them away.
+            Rendering to canvas keeps the file out of the browser's viewer.
+          -->
+          <pdf-viewer ref="pdfViewer" v-else-if="mediaType === 'pdf'" :media="media" :media-type="mediaType" class="w-100 h-100"></pdf-viewer>
           <image-viewer ref="imageViewer" v-else-if="mediaType === 'image'" :initial-orientation="initialOrientation" :media="media" :media-type="mediaType" class="h-100" @orientation-changed="$emit('orientation-changed', $event)"></image-viewer>
           <docx-viewer ref="docxViewer" v-else-if="mediaType === 'docx'" :media="media" class="w-100 h-100"></docx-viewer>
 
-          <!-- Fallback for unknown file types -->
+          <!--
+            Fallback for file types with no in-app renderer. There is no direct
+            link here on purpose: a plain href to the file is the same bypass as
+            the browser's PDF viewer. Getting a copy goes through the approval
+            flow like every other download.
+          -->
           <div v-else-if="mediaType === 'unknown'" class="h-100 d-flex flex-column align-center justify-center bg-grey-lighten-2">
-            <v-icon size="64" color="grey">mdi-file-download</v-icon>
+            <v-icon size="64" color="grey">mdi-file-lock-outline</v-icon>
             <div class="text-h6 mt-4 text-medium-emphasis">{{ translations.previewNotAvailable_ }}</div>
             <div class="text-caption text-medium-emphasis">{{ media.filename }}</div>
-            <v-btn 
-              color="primary" 
-              variant="elevated" 
+            <download-request-button
+              v-if="media && media.id"
               class="mt-4"
-              prepend-icon="mdi-download"
-              :href="media.s3url"
-              download
-            >
-              {{ translations.downloadFile_ }}
-            </v-btn>
+              :media="media"
+              :gated="downloadGated"
+              :direct-url="media.s3url"
+            ></download-request-button>
           </div>
         </div>
       </div>

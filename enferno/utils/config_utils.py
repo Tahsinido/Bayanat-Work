@@ -114,6 +114,12 @@ class ConfigManager:
             "LLM_OCR_API_KEY": "",
             "SHEET_IMPORT": False,
             "DEDUP_TOOL": False,
+            # Admin-approved, code-verified file downloads
+            "DOWNLOAD_APPROVAL_ENABLED": True,
+            "DOWNLOAD_CODE_LENGTH": 8,
+            "DOWNLOAD_CODE_TTL_MINUTES": 15,
+            "DOWNLOAD_CODE_MAX_ATTEMPTS": 5,
+            "DOWNLOAD_REQUEST_EXPIRY_HOURS": 24,
             # Semantic (meaning-based) bulletin search
             "SEMANTIC_SEARCH_THRESHOLD": 0.65,
             "SEMANTIC_SEARCH_MAX_RESULTS": 20,
@@ -135,6 +141,19 @@ class ConfigManager:
                 "CREATE": True,
                 "DELETE": True,
                 "DOWNLOAD": True,
+                # Gated file downloads. On by default: the point of the
+                # approval flow is the record of who asked for what and who
+                # released it, and that record only exists if it is logged.
+                "REQUEST-DOWNLOAD": True,
+                "APPROVE-DOWNLOAD": True,
+                "REJECT-DOWNLOAD": True,
+                # Evidence lifecycle. On by default: an evidence module whose
+                # audit trail is off is not an evidence module.
+                "EVIDENCE-CREATE": True,
+                "EVIDENCE-UPDATE": True,
+                "EVIDENCE-VIEW": True,
+                "EVIDENCE-ARCHIVE": True,
+                "CUSTODY-ADD": True,
                 "LOGIN": True,
                 "LOGOUT": True,
                 "REVIEW": True,
@@ -210,6 +229,11 @@ class ConfigManager:
             "LLM_OCR_API_KEY": "LLM OCR API Key",
             "SHEET_IMPORT": "Sheet Import",
             "DEDUP_TOOL": "Dedup Tool",
+            "DOWNLOAD_APPROVAL_ENABLED": "Require Admin Approval for Downloads",
+            "DOWNLOAD_CODE_LENGTH": "Download Verification Code Length",
+            "DOWNLOAD_CODE_TTL_MINUTES": "Download Code Validity (minutes)",
+            "DOWNLOAD_CODE_MAX_ATTEMPTS": "Download Code Maximum Attempts",
+            "DOWNLOAD_REQUEST_EXPIRY_HOURS": "Download Approval Validity (hours)",
             "SEMANTIC_SEARCH_THRESHOLD": "Semantic Search Similarity Threshold",
             "SEMANTIC_SEARCH_MAX_RESULTS": "Semantic Search Maximum Results",
             "BABEL_DEFAULT_LOCALE": "Default System Language",
@@ -321,6 +345,11 @@ class ConfigManager:
             "LLM_OCR_API_KEY": ConfigManager.MASK_STRING if cfg.LLM_OCR_API_KEY else "",
             "SHEET_IMPORT": cfg.SHEET_IMPORT,
             "DEDUP_TOOL": cfg.DEDUP_TOOL,
+            "DOWNLOAD_APPROVAL_ENABLED": cfg.DOWNLOAD_APPROVAL_ENABLED,
+            "DOWNLOAD_CODE_LENGTH": cfg.DOWNLOAD_CODE_LENGTH,
+            "DOWNLOAD_CODE_TTL_MINUTES": cfg.DOWNLOAD_CODE_TTL_MINUTES,
+            "DOWNLOAD_CODE_MAX_ATTEMPTS": cfg.DOWNLOAD_CODE_MAX_ATTEMPTS,
+            "DOWNLOAD_REQUEST_EXPIRY_HOURS": cfg.DOWNLOAD_REQUEST_EXPIRY_HOURS,
             "SEMANTIC_SEARCH_THRESHOLD": cfg.SEMANTIC_SEARCH_THRESHOLD,
             "SEMANTIC_SEARCH_MAX_RESULTS": cfg.SEMANTIC_SEARCH_MAX_RESULTS,
             "BABEL_DEFAULT_LOCALE": cfg.BABEL_DEFAULT_LOCALE,

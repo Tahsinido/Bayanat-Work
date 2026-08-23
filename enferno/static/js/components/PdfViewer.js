@@ -1,3 +1,23 @@
+/**
+ * In-app PDF viewer, rendered with PDF.js onto a canvas.
+ *
+ * The file is never handed to the browser's own PDF viewer, so its Download and
+ * Print buttons never appear. It is fetched from /admin/api/media/<id>/proxy,
+ * which keeps Bayanat's authentication and permission checks in front of the
+ * bytes and never exposes the document at a public or static URL -- on S3
+ * deployments the proxy streams the file server-side rather than handing the
+ * browser a presigned link.
+ *
+ * DETERRENT, NOT DRM. Hiding Download and Print raises the effort required; it
+ * does not make the document uncopyable. Anyone who can see the page can still
+ * screenshot it, and the decoded bytes exist in the browser by necessity --
+ * devtools' network tab still shows the proxy response. Treat this as a control
+ * against casual redistribution and an aid to accountability, never as a
+ * guarantee that a viewer cannot retain a copy.
+ *
+ * The watermark below exists for that reason: it puts the viewer's identity into
+ * the rendered pixels, so a screenshot or a saved canvas carries it too.
+ */
 const PdfViewer = Vue.defineComponent({
   props: ['media', 'mediaType'],
 
@@ -5,6 +25,8 @@ const PdfViewer = Vue.defineComponent({
     pageMap: new Map(),
     loading: false,
     error: false,
+    // Fixed once per open so every page of one viewing carries one stamp.
+    watermarkText: '',
   }),
 
   computed: {
@@ -25,6 +47,7 @@ const PdfViewer = Vue.defineComponent({
   created() {
     this._pdf = null;               // non-reactive PDFDocumentProxy
     this._rendering = new Set();    // guard against double render
+    this.watermarkText = this.buildWatermark();
   },
 
   beforeUnmount() {
@@ -120,6 +143,12 @@ const PdfViewer = Vue.defineComponent({
 
         await page.render({ canvasContext: ctx, viewport }).promise;
 
+        // Drawn into the canvas itself, not overlaid in the DOM: a screenshot,
+        // a "save image as" on the canvas, or a print all carry it, because by
+        // this point it is part of the pixels rather than a element sitting on
+        // top that could be hidden.
+        this.drawWatermark(ctx, viewport.width, viewport.height);
+
         // Update to actual rendered dimensions and mark as done
         this.pageMap.set(pageNumber, {
           ...pageState,
@@ -137,6 +166,41 @@ const PdfViewer = Vue.defineComponent({
       }
     },
 
+    // Who is looking and when. Read from the server-rendered bootstrap rather
+    // than anything the page could be tricked into changing.
+    buildWatermark() {
+      const user = window.__username__ || '';
+      const now = new Date();
+      const stamp = now.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+      return user ? `${user} · ${stamp}` : stamp;
+    },
+
+    drawWatermark(ctx, width, height) {
+      const text = this.watermarkText;
+      if (!text) return;
+
+      ctx.save();
+      // Light enough to read the document through, dark enough to survive a
+      // screenshot being brightened.
+      ctx.globalAlpha = 0.13;
+      ctx.fillStyle = '#111';
+      ctx.font = `${Math.max(12, Math.round(width / 42))}px sans-serif`;
+      ctx.textBaseline = 'middle';
+      ctx.rotate(-Math.PI / 6);
+
+      const stepX = ctx.measureText(text).width + 70;
+      const stepY = 95;
+      // Rotating the plane means the tiling has to overshoot the page on every
+      // side, otherwise corners come out bare.
+      const span = width + height;
+      for (let y = -span; y < span; y += stepY) {
+        for (let x = -span; x < span; x += stepX) {
+          ctx.fillText(text, x, y);
+        }
+      }
+      ctx.restore();
+    },
+
     onIntersect(isIntersecting, entries, observer, page) {
       if (isIntersecting && !page.rendered && !page.renderError) {
         this.renderPage(page.pageNumber);
@@ -149,7 +213,7 @@ const PdfViewer = Vue.defineComponent({
   },
 
   template: `
-    <div ref="container" class="w-100 h-100 overflow-y-auto d-flex flex-column align-center bg-grey-lighten-3 pa-4 ga-4">
+    <div ref="container" class="pdf-viewer w-100 h-100 overflow-y-auto d-flex flex-column align-center bg-grey-lighten-3 pa-4 ga-4">
 
       <v-progress-circular
         v-if="loading"

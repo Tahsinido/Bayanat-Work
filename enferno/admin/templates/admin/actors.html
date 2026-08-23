@@ -117,6 +117,20 @@
 
 
                                 <v-spacer></v-spacer>
+                                {# Spreadsheet import lives in the Data Import section; this is a
+                                   shortcut to it from where the records land. Admin only, matching
+                                   the import endpoints, and hidden entirely when the feature is off. #}
+                                {% if config.SHEET_IMPORT and current_user.has_role('Admin') %}
+                                    <v-tooltip location="bottom"
+                                               text="{{ _('Import actors from an Excel or CSV file and map its columns to actor fields') }}">
+                                        <template #activator="{ props }">
+                                            <v-btn v-bind="props" href="/import/sheets/"
+                                                   prepend-icon="mdi-microsoft-excel"
+                                                   variant="tonal" class="ma-2"
+                                            >{{ _('Import from Excel') }}</v-btn>
+                                        </template>
+                                    </v-tooltip>
+                                {% endif %}
                                 {% if current_user.roles_in(['Admin','DA']) %}
                                     <v-btn @click="editItem" color="primary" variant="elevated"
                                            class="ma-2">{{ _('New Actor') }}</v-btn>
@@ -397,6 +411,8 @@
     <script src="/static/js/components/PopDateTimeField.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/GeoLocations.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/MediaGrid.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DownloadCodeDialog.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DownloadRequestButton.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/MediaCard.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/MediaThumbnail.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/PreviewCard.js?v={{ config.VERSION }}"></script>
@@ -411,7 +427,6 @@
     <script src="/static/js/components/MediaRedactor.js?v={{ config.VERSION }}"></script>
 
     <script src="/static/js/components/PdfViewer.js?v={{ config.VERSION }}"></script>
-    <script src="/static/js/components/NativePdfViewer.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/DocxViewer.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/SnapshotDialog.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/Visualization.js?v={{ config.VERSION }}"></script>
@@ -1845,11 +1860,12 @@
         app.component('GlobalMap', GlobalMap);
         app.component('EntityFlowMap', EntityFlowMap);
         app.component('MediaGrid', MediaGrid);
+        app.component('DownloadCodeDialog', DownloadCodeDialog);
+        app.component('DownloadRequestButton', DownloadRequestButton);
         app.component('MediaCard', MediaCard);
         app.component('MediaThumbnail', MediaThumbnail);
         app.component('Visualization', Visualization);
         app.component('PdfViewer', PdfViewer);
-        app.component('NativePdfViewer', NativePdfViewer);
         app.component('DocxViewer', DocxViewer);
         app.component('SnapshotDialog', SnapshotDialog);
         app.component('PreviewCard', PreviewCard);

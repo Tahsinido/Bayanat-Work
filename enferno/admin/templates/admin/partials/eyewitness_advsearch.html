@@ -1,0 +1,143 @@
+{# Advanced search for eyewitness captures.
+
+   Bound to the same `q` object the toolbar writes to, so the two never drift
+   apart. Entity filters send the linked record's id rather than a typed name,
+   which is what makes a search survive a later rename of that entity. #}
+<v-dialog v-model="advSearchExpand" max-width="900" scrollable>
+    <v-card>
+        <v-toolbar density="compact" color="primary">
+            <v-toolbar-title class="text-body-1">{{ _('Advanced search') }}</v-toolbar-title>
+            <v-spacer></v-spacer>
+            <v-btn icon="mdi-close" @click="advSearchExpand = false"></v-btn>
+        </v-toolbar>
+
+        <v-card-text>
+            <div class="text-overline text-medium-emphasis mb-1">{{ _('Item and device') }}</div>
+            <v-row dense>
+                <v-col cols="12" md="3">
+                    <v-text-field v-bind="inputProps" v-model.trim="q.item_id"
+                                  label="{{ _('Item ID') }}"></v-text-field>
+                </v-col>
+                <v-col cols="12" md="3">
+                    <v-text-field v-bind="inputProps" v-model.trim="q.device_id"
+                                  label="{{ _('Device ID') }}"></v-text-field>
+                </v-col>
+                <v-col cols="12" md="3">
+                    <v-text-field v-bind="inputProps" v-model.trim="q.username"
+                                  label="{{ _('Username') }}"></v-text-field>
+                </v-col>
+                <v-col cols="12" md="3">
+                    <v-select v-bind="inputProps" clearable v-model="q.status"
+                              :items="statuses" label="{{ _('Status') }}"></v-select>
+                </v-col>
+                <v-col cols="12" md="3">
+                    <v-text-field v-bind="inputProps" type="number"
+                                  v-model.number="q.number_of_items_min"
+                                  label="{{ _('Items, at least') }}"></v-text-field>
+                </v-col>
+                <v-col cols="12" md="3">
+                    <v-text-field v-bind="inputProps" type="number"
+                                  v-model.number="q.number_of_items_max"
+                                  label="{{ _('Items, at most') }}"></v-text-field>
+                </v-col>
+            </v-row>
+
+            <div class="text-overline text-medium-emphasis mt-4 mb-1">{{ _('Free text') }}</div>
+            <v-row dense>
+                <v-col cols="12">
+                    <v-text-field v-bind="inputProps" v-model.trim="q.text"
+                                  prepend-inner-icon="mdi-magnify"
+                                  label="{{ _('Event description, user notes, item, device or username') }}"
+                    ></v-text-field>
+                </v-col>
+            </v-row>
+
+            <div class="text-overline text-medium-emphasis mt-4 mb-1">{{ _('Date of capture') }}</div>
+            <v-row dense>
+                <v-col cols="12" md="4">
+                    <v-text-field v-bind="inputProps" type="date"
+                                  v-model="q.date_of_capture_from"
+                                  label="{{ _('From') }}"></v-text-field>
+                </v-col>
+                <v-col cols="12" md="4">
+                    <v-text-field v-bind="inputProps" type="date"
+                                  v-model="q.date_of_capture_to"
+                                  label="{{ _('To') }}"></v-text-field>
+                </v-col>
+            </v-row>
+
+            <div class="text-overline text-medium-emphasis mt-4 mb-1">{{ _('Linked records') }}</div>
+            <v-row dense>
+                <v-col cols="12" md="6">
+                    <v-autocomplete v-bind="inputProps" clearable
+                                    v-model="q.alleged_event_id"
+                                    :items="eventOptions" :loading="loadingEvents"
+                                    item-title="title" item-value="id"
+                                    @update:search="searchEvents"
+                                    label="{{ _('Alleged event') }}"></v-autocomplete>
+                </v-col>
+                <v-col cols="12" md="6">
+                    <v-autocomplete v-bind="inputProps" clearable
+                                    v-model="q.perpetrator_id"
+                                    :items="actorOptions" :loading="loadingActors"
+                                    item-title="title" item-value="id"
+                                    @update:search="searchActors"
+                                    label="{{ _('Alleged perpetrator') }}"></v-autocomplete>
+                </v-col>
+                <v-col cols="12" md="6">
+                    <v-autocomplete v-bind="inputProps" clearable
+                                    v-model="q.capture_location_id"
+                                    :items="locationOptions" :loading="loadingLocations"
+                                    item-title="title" item-value="id"
+                                    @update:search="searchLocations"
+                                    label="{{ _('Location of capture (district / governorate)') }}"
+                    ></v-autocomplete>
+                </v-col>
+                <v-col cols="12" md="6">
+                    <v-autocomplete v-bind="inputProps" clearable
+                                    v-model="q.tag_id"
+                                    :items="labelOptions" :loading="loadingLabels"
+                                    item-title="title" item-value="id"
+                                    @update:search="searchLabels"
+                                    label="{{ _('Tag used') }}"></v-autocomplete>
+                </v-col>
+                <v-col cols="12" md="6">
+                    <v-autocomplete v-bind="inputProps" clearable
+                                    v-model="q.bulletin_id"
+                                    :items="bulletinOptions" :loading="loadingBulletins"
+                                    item-title="title" item-value="id"
+                                    @update:search="searchBulletins"
+                                    label="{{ _('Case / Bulletin') }}"></v-autocomplete>
+                </v-col>
+                <v-col cols="12" md="6">
+                    <v-autocomplete v-bind="inputProps" clearable
+                                    v-model="q.evidence_id"
+                                    :items="evidenceOptions" :loading="loadingEvidence"
+                                    item-title="title" item-value="id"
+                                    @update:search="searchEvidence"
+                                    label="{{ _('Related evidence') }}"></v-autocomplete>
+                </v-col>
+                <v-col cols="12" md="6">
+                    <v-autocomplete v-bind="inputProps" clearable
+                                    v-model="q.field_data_id"
+                                    :items="fieldDataOptions" :loading="loadingFieldData"
+                                    item-title="title" item-value="id"
+                                    @update:search="searchFieldData"
+                                    label="{{ _('Field Data site') }}"></v-autocomplete>
+                </v-col>
+                <v-col cols="12" md="6">
+                    <v-checkbox v-model="q.has_coordinates" hide-details density="compact"
+                                label="{{ _('Only captures with GPS coordinates') }}"></v-checkbox>
+                </v-col>
+            </v-row>
+        </v-card-text>
+
+        <v-divider></v-divider>
+        <v-card-actions>
+            <v-btn variant="text" @click="resetSearch">{{ _('Clear all') }}</v-btn>
+            <v-spacer></v-spacer>
+            <v-btn variant="text" @click="advSearchExpand = false">{{ _('Cancel') }}</v-btn>
+            <v-btn color="primary" variant="elevated" @click="doAdvSearch">{{ _('Search') }}</v-btn>
+        </v-card-actions>
+    </v-card>
+</v-dialog>

@@ -47,7 +47,12 @@ from . import admin
 logger = get_logger()
 
 GRACE_PERIOD = timedelta(hours=2)
-S3_URL_EXPIRY = 3600
+
+# A presigned URL carries no authentication: whoever holds the string can fetch
+# the file, and it can be forwarded to anyone. Keep the window short enough that
+# a copied URL is stale before it can be passed on, while still allowing a large
+# video to start streaming. Overridable for deployments on slow links.
+S3_URL_EXPIRY = int(os.environ.get("S3_URL_EXPIRY", 300))
 
 
 def _require_media_access(f):
@@ -468,7 +473,13 @@ def serve_media(
                 # Check if file is uploaded within the grace period
                 if datetime.utcnow() - last_modified.replace(tzinfo=None) <= GRACE_PERIOD:
                     params = {"Bucket": current_app.config["S3_BUCKET"], "Key": filename}
-                    url = s3.generate_presigned_url("get_object", Params=params, ExpiresIn=36000)
+                    # Was 36000 (10 hours). The grace path exists so a file can
+                    # be previewed while its Media row is still being created --
+                    # that needs minutes, not a working day, and this URL is
+                    # unauthenticated for its whole life.
+                    url = s3.generate_presigned_url(
+                        "get_object", Params=params, ExpiresIn=S3_URL_EXPIRY
+                    )
                     return HTTPResponse.success(data={"url": url})
                 else:
                     Activity.create(
@@ -560,20 +571,61 @@ def api_local_serve_media(
 @auth_required()
 @_require_media_access
 def api_media_proxy(id: int) -> Response:
-    """Proxy media file through Flask -- ensures same-origin inline display for PDFs."""
+    """Serve a media file for in-app display, behind the normal permission checks.
+
+    This is what the in-app PDF viewer reads from. It exists so a document is
+    never exposed at a public or static URL: on S3 deployments the file is
+    streamed through this process rather than handing the browser a presigned
+    link, so the only way to the bytes is with a valid session that passes
+    can_access() on this specific item.
+
+    Always served inline. Taking a copy is a separate, approved action -- see
+    enferno/admin/views/download_requests.py, which is the only route that
+    responds with an attachment.
+
+    Note: inline display and a viewer without Download or Print buttons are a
+    deterrent, not DRM. Anyone permitted to view a document can still screenshot
+    it, and these bytes necessarily reach the browser. That is why every access
+    here is logged.
+    """
     media = Media.query.get(id)
     if not media:
         abort(404)
     if not current_user.can_access(media):
+        Activity.create(
+            current_user,
+            Activity.ACTION_VIEW,
+            Activity.STATUS_DENIED,
+            {"media_id": id},
+            "media",
+            details="Unauthorized attempt to proxy restricted media file.",
+        )
         return HTTPResponse.forbidden("Restricted Access")
 
+    # This route hands over the raw bytes, so it is the cheapest way to take a
+    # copy without going through the approval flow. Log it like any other access
+    # to the file, otherwise the easiest path out is also the least recorded.
+    Activity.create(
+        current_user,
+        Activity.ACTION_VIEW,
+        Activity.STATUS_SUCCESS,
+        media.to_mini(),
+        "media",
+    )
+
     if current_app.config.get("FILESYSTEM_LOCAL"):
-        return send_from_directory("media", media.media_file)
+        response = send_from_directory("media", media.media_file)
+        # send_from_directory sets no disposition of its own, which leaves the
+        # browser to guess -- and guessing "attachment" turns a view into a
+        # download. State it.
+        response.headers["Content-Disposition"] = "inline"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
 
     s3_url = _media_url(media.media_file)
     r = http_requests.get(s3_url, stream=True, timeout=30)
     content_type = r.headers.get("Content-Type", "application/octet-stream")
-    headers = {"Content-Disposition": "inline"}
+    headers = {"Content-Disposition": "inline", "X-Content-Type-Options": "nosniff"}
     return Response(
         stream_with_context(r.iter_content(chunk_size=8192)),
         content_type=content_type,

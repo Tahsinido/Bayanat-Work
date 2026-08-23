@@ -9,6 +9,7 @@ from flask_security.decorators import current_user
 from enferno.extensions import db
 from enferno.settings import Config
 
+from enferno.utils import download_codes
 from enferno.utils.base import BaseMixin
 from enferno.utils.date_helper import DateHelper
 from itsdangerous import URLSafeSerializer
@@ -39,6 +40,15 @@ class Export(db.Model, BaseMixin):
     approver_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     approver = db.relationship("User", backref="approved_exports", foreign_keys=[approver_id])
     expires_on = db.Column(db.DateTime)
+
+    # Approval alone no longer releases the archive: the approving admin is
+    # given a one-time code out of band, and the requester has to return it
+    # before the file is served. Stored hashed -- a database dump must not be
+    # enough to unlock an export.
+    code_hash = db.Column(db.String)
+    code_expires_on = db.Column(db.DateTime)
+    code_attempts = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    downloaded_at = db.Column(db.DateTime)
 
     @property
     def unique_id(self):
@@ -136,6 +146,12 @@ class Export(db.Model, BaseMixin):
             "expired": self.expired,
             "uid": self.unique_id,
             "items": self.items,
+            # Never the code itself -- only whether one is currently usable.
+            "code_required": download_codes.approval_enabled(),
+            "code_expired": self.code_expired,
+            "code_locked": self.code_locked,
+            "downloaded_at": DateHelper.serialize_datetime(self.downloaded_at),
+            "attempts_left": max(0, download_codes.max_attempts() - (self.code_attempts or 0)),
         }
 
     def approve(self) -> "Export":
@@ -149,11 +165,52 @@ class Export(db.Model, BaseMixin):
 
         return self
 
+    def issue_code(self) -> str:
+        """Mint the one-time download code, returning the plaintext once.
+
+        The caller shows it to the approving admin and then forgets it: only
+        the hash is stored.
+        """
+        code = download_codes.generate_code()
+        self.code_hash = download_codes.hash_code(code)
+        self.code_expires_on = download_codes.code_expiry_from_now()
+        self.code_attempts = 0
+        self.downloaded_at = None
+        return code
+
+    @property
+    def code_expired(self) -> bool:
+        return bool(self.code_expires_on and dt.utcnow() > self.code_expires_on)
+
+    @property
+    def code_locked(self) -> bool:
+        return (self.code_attempts or 0) >= download_codes.max_attempts()
+
+    def verify_code(self, code: str) -> bool:
+        """Check a submitted code, counting the attempt either way.
+
+        Counting failures is what keeps a short code safe; commit after
+        calling this so the counter survives.
+        """
+        if self.code_expired or self.code_locked or not self.code_hash:
+            return False
+        self.code_attempts = (self.code_attempts or 0) + 1
+        return download_codes.check_code(code, self.code_hash)
+
+    def mark_downloaded(self) -> "Export":
+        """Spend the code so one approval releases the archive once."""
+        self.downloaded_at = dt.utcnow()
+        self.code_hash = None
+        self.code_expires_on = None
+        return self
+
     def reject(self) -> "Export":
         """
         Method to reject Export requests.
         """
         self.status = "Rejected"
+        self.code_hash = None
+        self.code_expires_on = None
 
         return self
 

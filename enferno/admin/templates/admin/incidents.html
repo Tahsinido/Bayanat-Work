@@ -355,6 +355,8 @@
 
     <script src="/static/js/components/GeoLocations.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/MediaGrid.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DownloadCodeDialog.js?v={{ config.VERSION }}"></script>
+    <script src="/static/js/components/DownloadRequestButton.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/MediaCard.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/MediaThumbnail.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/PreviewCard.js?v={{ config.VERSION }}"></script>
@@ -363,7 +365,6 @@
     <script src="/static/js/components/FieldRenderer.js?v={{ config.VERSION }}"></script>
 
     <script src="/static/js/components/PdfViewer.js?v={{ config.VERSION }}"></script>
-    <script src="/static/js/components/NativePdfViewer.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/DocxViewer.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/ImageViewer.js?v={{ config.VERSION }}"></script>
     <script src="/static/js/components/InlineMediaRenderer.js?v={{ config.VERSION }}"></script>
@@ -1581,11 +1582,12 @@
         app.component('EntityFlowMap', EntityFlowMap);
         app.component('MobilityMap', MobilityMap);
         app.component('MediaGrid', MediaGrid);
+        app.component('DownloadCodeDialog', DownloadCodeDialog);
+        app.component('DownloadRequestButton', DownloadRequestButton);
         app.component('MediaCard', MediaCard);
         app.component('MediaThumbnail', MediaThumbnail);
         app.component('Visualization', Visualization);
         app.component('PdfViewer', PdfViewer);
-        app.component('NativePdfViewer', NativePdfViewer);
         app.component('DocxViewer', DocxViewer);
         app.component('ImageViewer', ImageViewer);
         app.component('InlineMediaRenderer', InlineMediaRenderer);
