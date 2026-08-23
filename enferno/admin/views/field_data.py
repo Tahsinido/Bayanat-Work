@@ -4,10 +4,12 @@ from flask import Response, request
 from flask.templating import render_template
 from flask_security.decorators import current_user, roles_accepted, roles_required
 from sqlalchemy import desc, or_
+from sqlalchemy.orm import selectinload
 
 from enferno.extensions import db
 from enferno.admin.constants import Constants
 from enferno.admin.models import Activity, FieldData, FieldDataSite
+from enferno.admin.models.GeoLocation import GeoLocation
 from enferno.utils.search_snippets import first_snippet
 from enferno.admin.models.Notification import Notification
 from enferno.admin.validation.models import FieldDataRequestModel
@@ -114,6 +116,12 @@ def api_field_data() -> Response:
         query = query.order_by(desc(column) if sort_desc else column)
     else:
         query = query.order_by(desc(FieldData.id))
+
+    # to_dict() serialises every marker on every row, so without this the list
+    # costs two extra queries per record once a location has markers.
+    query = query.options(
+        selectinload(FieldData.geo_locations).selectinload(GeoLocation.type),
+    )
 
     result = query.paginate(page=page, per_page=per_page, error_out=False)
 

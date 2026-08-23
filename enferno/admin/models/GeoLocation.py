@@ -25,6 +25,11 @@ class GeoLocation(db.Model, BaseMixin):
     latlng = db.Column(Geometry("POINT", srid=4326))
     comment = db.Column(db.Text)
     bulletin_id = db.Column(db.Integer, db.ForeignKey("bulletin.id"))
+    # A marker belongs to whichever record placed it. Field Data reuses this
+    # table rather than keeping coordinates of its own, so a field location's
+    # markers are the same shape as a bulletin's and remain reachable by the
+    # same spatial queries.
+    field_data_id = db.Column(db.Integer, db.ForeignKey("field_data.id"), index=True)
 
     def from_json(self, jsn: dict[str, Any]) -> "GeoLocation":
         """

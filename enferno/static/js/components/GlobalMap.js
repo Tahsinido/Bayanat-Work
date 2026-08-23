@@ -165,6 +165,14 @@ const GlobalMap = Vue.defineComponent({
       );
 
       this.fitMarkers();
+
+      // Frame the markers that were already present at mount. Until now only
+      // the modelValue watcher fitted the view, so a map handed its points
+      // before it mounted drew them correctly but opened on the configured
+      // default centre instead -- with the markers off screen. Guarded by
+      // isValid() inside updateMapBounds, so a map that mounts empty is
+      // untouched and keeps that default centre.
+      this.updateMapBounds();
     },
     updateMapBounds() {
       // Fit map of bounds of clusterLayer

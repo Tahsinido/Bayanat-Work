@@ -135,6 +135,20 @@ class FieldData(db.Model, BaseMixin):
         backref=db.backref("field_data_records", lazy="dynamic"),
     )
 
+    # GPS markers on the map, the same GeoLocation rows Bulletin uses. A record
+    # can carry several: the grave itself, the access road, the vantage point a
+    # photo was taken from.
+    #
+    # delete-orphan because a marker dropped from the form has no other owner.
+    # Bulletin leaves those behind with a null FK, which is why that table
+    # accumulates stragglers; there is no reason to repeat it here.
+    geo_locations = db.relationship(
+        "GeoLocation",
+        backref="field_data",
+        foreign_keys="GeoLocation.field_data_id",
+        cascade="all, delete-orphan",
+    )
+
     # How many separate times this site has been documented.
     times_documented = db.Column(db.Integer)
 
@@ -179,6 +193,8 @@ class FieldData(db.Model, BaseMixin):
             ids = [loc["id"] for loc in (json.get("locations") or []) if loc.get("id")]
             self.locations = Location.query.filter(Location.id.in_(ids)).all() if ids else []
 
+        self.sync_geo_locations(json)
+
         if "times_documented" in json:
             value = json.get("times_documented")
             self.times_documented = None if value in ("", None) else int(value)
@@ -199,6 +215,36 @@ class FieldData(db.Model, BaseMixin):
         self.sync_medias(json)
 
         return self
+
+    def sync_geo_locations(self, json: dict[str, Any]) -> None:
+        """Replace the map markers from the payload, updating rows in place.
+
+        A marker carries an id once saved, so an edit updates that row rather
+        than replacing it -- otherwise every save would leave the old row behind
+        and hand the marker a new identity.
+
+        An id is only honoured when the row already belongs to this record. The
+        payload is client-supplied, so a foreign id would otherwise let one
+        record reach into another's marker and rewrite it.
+        """
+        if "geoLocations" not in json:
+            return
+
+        from enferno.admin.models.GeoLocation import GeoLocation
+
+        markers = []
+        for payload in json.get("geoLocations") or []:
+            marker = None
+            if payload.get("id"):
+                candidate = db.session.get(GeoLocation, payload["id"])
+                if candidate is not None and candidate.field_data_id == self.id:
+                    marker = candidate
+            if marker is None:
+                marker = GeoLocation()
+            marker.from_json(payload)
+            markers.append(marker)
+
+        self.geo_locations = markers
 
     def sync_sites(self, json: dict[str, Any]) -> None:
         """Replace the site list from the payload, preserving existing rows.
@@ -343,6 +389,7 @@ class FieldData(db.Model, BaseMixin):
         data["external_link"] = self.external_link
         data["sites"] = [site.to_dict() for site in self.sites]
         data["locations"] = [loc.to_compact() for loc in self.locations]
+        data["geoLocations"] = [geo.to_dict() for geo in self.geo_locations]
         data["times_documented"] = self.times_documented
         data["has_interview"] = bool(self.has_interview)
         data["interview_names"] = self.interview_names or []

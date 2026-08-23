@@ -296,6 +296,13 @@
                                             <v-switch :disabled="isAdmin" color="primary" label="{{ _('Can Access Media') }}"
                                                       v-model="editedItem.can_access_media"></v-switch>
                                         </v-col>
+                                        <v-col cols="12" md="3">
+                                            <v-switch :disabled="isAdmin" color="primary"
+                                                      label="{{ _('Can Browse Bulletins') }}"
+                                                      hint="{{ _('Off: the user must search before any bulletin is shown') }}"
+                                                      persistent-hint
+                                                      v-model="editedItem.can_browse_bulletins"></v-switch>
+                                        </v-col>
                                     </v-row>
                                 </v-container>
                             </v-card-text>
@@ -603,6 +610,7 @@
                         this.editedItem.can_export = true;
                         this.editedItem.can_import_web = true;
                         this.editedItem.can_access_media = true;
+                        this.editedItem.can_browse_bulletins = true;
                         return true;
                     }
                     return false;

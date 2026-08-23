@@ -22,6 +22,7 @@ from enferno.admin.validation.models import (
 from enferno.extensions import rds, db
 from enferno.tasks import bulk_update_bulletins
 from enferno.user.models import Role
+from enferno.utils import bulletin_access
 from enferno.utils.date_helper import DateHelper
 from enferno.utils.http_response import HTTPResponse
 from enferno.utils.logging_utils import get_logger
@@ -36,6 +37,10 @@ logger = get_logger()
 # with an explanation, not an error: the search ran, it just found nothing close
 # enough to be worth showing.
 NO_SEMANTIC_MATCHES = "No relevant bulletins were found."
+
+# Returned to a user without the browse permission who asked for an unfiltered
+# listing. Not an error either: searching is open to them, listing is not.
+SEARCH_REQUIRED = "Search to see bulletins."
 
 
 def index_bulletin_safely(bulletin) -> None:
@@ -96,6 +101,24 @@ def api_bulletins(validated_data: dict) -> Response:
     cursor = validated_data.get("cursor")
     per_page = validated_data.get("per_page", PER_PAGE)
     include_count = validated_data.get("include_count", False)
+
+    # Searching bulletins and browsing them are separate privileges. Without the
+    # browse permission an unfiltered request gets an empty page rather than the
+    # table: the user has not searched for anything yet, so there is nothing to
+    # show them. Enforced here rather than in the page, so posting to this
+    # endpoint directly is subject to the same rule.
+    if not bulletin_access.is_search(q) and not bulletin_access.can_browse():
+        return HTTPResponse.success(
+            data={
+                "items": [],
+                "nextCursor": None,
+                "total": 0,
+                "totalType": "exact",
+                "searchRequired": True,
+                "meta": {"currentPageSize": 0, "hasMore": False, "isFirstPage": True},
+            },
+            message=SEARCH_REQUIRED,
+        )
 
     search = SearchUtils(q, "bulletin")
     base_query = search.get_query().options(
@@ -213,6 +236,13 @@ def api_bulletins(validated_data: dict) -> Response:
         else:
             # User doesn't have access - return restricted info only
             serialized_items.append({"id": item.id, "restricted": True})
+
+    # A search grants access to what it found. Only the rows this user was
+    # actually shown count; the restricted stubs above carry no content and stay
+    # closed. No-op for users who can browse.
+    bulletin_access.remember_hits(
+        item["id"] for item in serialized_items if not item.get("restricted")
+    )
 
     response = {
         "items": serialized_items,
@@ -490,37 +520,52 @@ def api_bulletin_get(
     mode = request.args.get("mode", None)
     if not bulletin:
         return HTTPResponse.not_found("Bulletin not found")
+
+    # Without the browse permission a bulletin opens only if this user's own
+    # search put it in front of them. Otherwise this endpoint would be a way to
+    # read the table one row at a time and never search at all -- the same
+    # browsing the list restriction exists to prevent, just slower.
+    if not bulletin_access.may_open(id):
+        Activity.create(
+            current_user,
+            Activity.ACTION_VIEW,
+            Activity.STATUS_DENIED,
+            bulletin.to_mini(),
+            "bulletin",
+            details=f"Attempt to open Bulletin {id} without browse permission or a search that found it.",
+        )
+        return HTTPResponse.forbidden("Search to see bulletins")
+
+    # hide review from view-only users
+    if not current_user.roles:
+        bulletin.review = None
+    if current_user.can_access(bulletin):
+        Activity.create(
+            current_user,
+            Activity.ACTION_VIEW,
+            Activity.STATUS_SUCCESS,
+            bulletin.to_mini(),
+            "bulletin",
+        )
+        return HTTPResponse.success(data=bulletin.to_dict(mode))
     else:
-        # hide review from view-only users
-        if not current_user.roles:
-            bulletin.review = None
-        if current_user.can_access(bulletin):
-            Activity.create(
-                current_user,
-                Activity.ACTION_VIEW,
-                Activity.STATUS_SUCCESS,
-                bulletin.to_mini(),
-                "bulletin",
-            )
-            return HTTPResponse.success(data=bulletin.to_dict(mode))
-        else:
-            # block access altogether here, doesn't make sense to send only the id
-            Activity.create(
-                current_user,
-                Activity.ACTION_VIEW,
-                Activity.STATUS_DENIED,
-                bulletin.to_mini(),
-                "bulletin",
-                details=f"Unauthorized attempt to view restricted Bulletin {id}.",
-            )
-            # Notify admins
-            Notification.send_admin_notification_for_event(
-                Constants.NotificationEvent.UNAUTHORIZED_ACTION,
-                "Unauthorized Action",
-                f"Unauthorized attempt to view restricted Bulletin {id}. User: {current_user.username}",
-                is_urgent=True,
-            )
-            return HTTPResponse.forbidden("Restricted Access")
+        # block access altogether here, doesn't make sense to send only the id
+        Activity.create(
+            current_user,
+            Activity.ACTION_VIEW,
+            Activity.STATUS_DENIED,
+            bulletin.to_mini(),
+            "bulletin",
+            details=f"Unauthorized attempt to view restricted Bulletin {id}.",
+        )
+        # Notify admins
+        Notification.send_admin_notification_for_event(
+            Constants.NotificationEvent.UNAUTHORIZED_ACTION,
+            "Unauthorized Action",
+            f"Unauthorized attempt to view restricted Bulletin {id}. User: {current_user.username}",
+            is_urgent=True,
+        )
+        return HTTPResponse.forbidden("Restricted Access")
 
 
 # get bulletin relations
@@ -543,6 +588,24 @@ def bulletin_relations(id: t.id) -> Response:
     bulletin = db.session.get(Bulletin, id)
     if not bulletin:
         return HTTPResponse.not_found("Bulletin not found")
+
+    # Relations are read through the parent record, so opening them requires the
+    # same standing as opening it: the record's own role restrictions, and -- for
+    # a user who cannot browse -- a search of their own that surfaced it.
+    # Otherwise this is a second way to walk the table by id.
+    if not bulletin_access.may_open(id):
+        return HTTPResponse.forbidden("Search to see bulletins")
+    if not current_user.can_access(bulletin):
+        Activity.create(
+            current_user,
+            Activity.ACTION_VIEW,
+            Activity.STATUS_DENIED,
+            bulletin.to_mini(),
+            "bulletin",
+            details=f"Unauthorized attempt to view relations of restricted Bulletin {id}.",
+        )
+        return HTTPResponse.forbidden("Restricted Access")
+
     items = []
 
     if cls == "bulletin":
@@ -763,6 +826,10 @@ def api_bulletins_semantic() -> Response:
 
     if not visible:
         return HTTPResponse.success(data=empty, message=NO_SEMANTIC_MATCHES)
+
+    # A meaning-based search grants access to what it found on the same terms a
+    # keyword search does. No-op for users who can browse.
+    bulletin_access.remember_hits(b.id for b in visible)
 
     terms = ss.query_terms(query)
     texts = [ss.bulletin_text(b) for b in visible]

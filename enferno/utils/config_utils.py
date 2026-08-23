@@ -123,6 +123,9 @@ class ConfigManager:
             # Semantic (meaning-based) bulletin search
             "SEMANTIC_SEARCH_THRESHOLD": 0.65,
             "SEMANTIC_SEARCH_MAX_RESULTS": 20,
+            # How long a search keeps its results openable for a user who is
+            # not allowed to browse the bulletin list
+            "BULLETIN_SEARCH_HIT_TTL": 86400,
             "BABEL_DEFAULT_LOCALE": "en",
             "MAPS_API_ENDPOINT": "https://{s}.tile.osm.org/{z}/{x}/{y}.png",
             "GOOGLE_MAPS_API_KEY": "",
@@ -236,6 +239,7 @@ class ConfigManager:
             "DOWNLOAD_REQUEST_EXPIRY_HOURS": "Download Approval Validity (hours)",
             "SEMANTIC_SEARCH_THRESHOLD": "Semantic Search Similarity Threshold",
             "SEMANTIC_SEARCH_MAX_RESULTS": "Semantic Search Maximum Results",
+            "BULLETIN_SEARCH_HIT_TTL": "Bulletin Search Result Access (seconds)",
             "BABEL_DEFAULT_LOCALE": "Default System Language",
             "MAPS_API_ENDPOINT": "Google Maps API Endpoint",
             "GOOGLE_MAPS_API_KEY": "Google Maps API Key",
@@ -352,6 +356,7 @@ class ConfigManager:
             "DOWNLOAD_REQUEST_EXPIRY_HOURS": cfg.DOWNLOAD_REQUEST_EXPIRY_HOURS,
             "SEMANTIC_SEARCH_THRESHOLD": cfg.SEMANTIC_SEARCH_THRESHOLD,
             "SEMANTIC_SEARCH_MAX_RESULTS": cfg.SEMANTIC_SEARCH_MAX_RESULTS,
+            "BULLETIN_SEARCH_HIT_TTL": cfg.BULLETIN_SEARCH_HIT_TTL,
             "BABEL_DEFAULT_LOCALE": cfg.BABEL_DEFAULT_LOCALE,
             "MAPS_API_ENDPOINT": cfg.MAPS_API_ENDPOINT,
             "GOOGLE_MAPS_API_KEY": ConfigManager.MASK_STRING if cfg.GOOGLE_MAPS_API_KEY else "",

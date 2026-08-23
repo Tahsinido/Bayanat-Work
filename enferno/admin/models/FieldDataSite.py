@@ -60,6 +60,13 @@ class FieldDataSite(db.Model, BaseMixin):
     sort_order = db.Column(db.Integer, default=0, nullable=False, server_default="0")
 
     site_name = db.Column(db.String, index=True, nullable=False)
+
+    # Where this particular site sits. Separate graves or buildings under one
+    # field location stand metres apart, so a site may carry its own reading;
+    # left blank it falls back to the parent location's markers in the UI.
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
+
     mission_date = db.Column(db.DateTime)
     collected_data_by = db.Column(db.String)
     data_types = db.Column(ARRAY(db.String), default=[])
@@ -115,6 +122,18 @@ class FieldDataSite(db.Model, BaseMixin):
 
         if "data_types" in json:
             self.data_types = json.get("data_types") or []
+
+        # Shaped the way GeoMap binds, so the picker writes straight back.
+        # Unusable coordinates are dropped rather than failing the whole save --
+        # the rest of the site is still worth keeping.
+        if "geo" in json:
+            geo = json.get("geo") or {}
+            lat, lng = geo.get("lat"), geo.get("lng")
+            try:
+                self.latitude = float(lat) if lat not in (None, "") else None
+                self.longitude = float(lng) if lng not in (None, "") else None
+            except (TypeError, ValueError):
+                logger.warning(f"Ignoring unusable site coordinates: {geo!r}")
 
         if "sort_order" in json and json.get("sort_order") is not None:
             self.sort_order = int(json["sort_order"])
@@ -194,6 +213,13 @@ class FieldDataSite(db.Model, BaseMixin):
         for field in DATE_FIELDS:
             data[field] = serialize_day(getattr(self, field))
         data["data_types"] = self.data_types or []
+        data["latitude"] = self.latitude
+        data["longitude"] = self.longitude
+        data["geo"] = (
+            {"lat": self.latitude, "lng": self.longitude}
+            if self.latitude is not None and self.longitude is not None
+            else None
+        )
         data["has_interview"] = bool(self.has_interview)
         data["interview_names"] = self.interview_names or []
         data["medias"] = [m.to_dict() for m in self.medias if not m.deleted]

@@ -33,6 +33,10 @@ const UserCard = Vue.defineComponent({
         {
           value: this.user.can_self_assign,
           label: this.user.can_self_assign ? this.translations.canSelfAssign_ : this.translations.cannotSelfAssign_
+        },
+        {
+          value: this.user.can_browse_bulletins,
+          label: this.user.can_browse_bulletins ? this.translations.canBrowseBulletins_ : this.translations.cannotBrowseBulletins_
         }
       ];
     }

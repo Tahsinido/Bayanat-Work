@@ -142,11 +142,24 @@
                                 </v-alert>
                             </v-sheet>
 
+                            <!-- This user may search bulletins but not browse them,
+                                 so nothing is listed until they search. Outside the
+                                 semantic sheet above: the prompt applies to both
+                                 kinds of search. -->
+                            <v-sheet v-if="searchRequired" class="mx-3 mt-3">
+                                <v-alert type="info" variant="tonal" density="compact" icon="mdi-magnify">
+                                    {{ _('Search to see bulletins. Results are limited to the records you are allowed to view.') }}
+                                </v-alert>
+                            </v-sheet>
+
                             <v-sheet class="ma-3 d-flex align-center">
-                                <v-btn variant="text" class="hidden-sm-and-down" @click="allBulletins"
+                                <!-- "All Bulletins" clears the search, which is
+                                     exactly what a search-only user is not
+                                     allowed to ask for. -->
+                                <v-btn v-if="canBrowseBulletins" variant="text" class="hidden-sm-and-down" @click="allBulletins"
                                 >{{ _('All Bulletins') }}</v-btn
                                 >
-                                <v-divider class="mx-1 hidden-sm-and-down" inset vertical></v-divider>
+                                <v-divider v-if="canBrowseBulletins" class="mx-1 hidden-sm-and-down" inset vertical></v-divider>
                                 <v-btn variant="text" class="hidden-sm-and-down" @click="myAssigned"
                                 >{{ _('Assigned to me') }}</v-btn
                                 >
@@ -651,6 +664,9 @@
                     searches: [],
                     searchTime: null,
                     savedSearchSelection: null,
+                    // Set when the server answered "search first" instead of a
+                    // page of results.
+                    searchRequired: false,
 
 
                     currentUser: JSON.parse(`{{ current_user.to_dict()|tojson }}`),
@@ -940,6 +956,16 @@
                         return this.currentUser.roles;
                     },
 
+                    // Whether this user may page through the bulletin list at
+                    // all. Everyone can search; listing without searching is a
+                    // granted permission. Mirrors the server rule so the page
+                    // does not ask for a list it will never be given -- the
+                    // server is what actually enforces it.
+                    canBrowseBulletins() {
+                        return this.has_role(this.currentUser, 'Admin')
+                            || !!this.currentUser.can_browse_bulletins;
+                    },
+
                     showingItemsOfText() {
                         return "{{ _('Showing {items} of') }}".replace('{items}', this.items.length)
                     }
@@ -1086,8 +1112,16 @@
                         if (this.$route.query.reltoa) return this.filter_related_to_actor(this.$route.query.reltoa);
                         if (this.$route.query.reltoi) return this.filter_related_to_incident(this.$route.query.reltoi);
 
-                        // Only refresh on initial page load
-                        if (initialLoad) this.refresh();
+                        // Only refresh on initial page load -- and only for users
+                        // allowed to see a list they did not search for. For the
+                        // rest the first view is the prompt to search, so there
+                        // is no request worth making yet.
+                        if (!initialLoad) return;
+                        if (!this.canBrowseBulletins) {
+                            this.searchRequired = true;
+                            return;
+                        }
+                        this.refresh();
                     },
                     validateFormAndSave() {
                         this.$refs.form.validate().then(({ valid, errors }) => {
@@ -1328,6 +1362,9 @@
                                 const d = response.data;
                                 this.items = d.items || [];
                                 this.totalCount = d.total || 0;
+                                // A semantic search always carries a query, so
+                                // reaching here means the user has searched.
+                                this.searchRequired = false;
                                 this.semanticInfo = {
                                     indexed: d.indexed,
                                     threshold: d.threshold,
@@ -1384,6 +1421,10 @@
                                 console.log(`API call took ${duration}ms`)
                                 
                                 this.items = response.data.items;
+                                // The server answers an unfiltered request from
+                                // a search-only user with an empty page and this
+                                // flag, rather than the table.
+                                this.searchRequired = !!response.data.searchRequired;
                                 // Flip with the data, not on keystroke, so the
                                 // column and its contents appear together.
                                 this.snippetsActive = this.items.some(i => i && i.snippet);

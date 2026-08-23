@@ -266,6 +266,15 @@ class Config(object):
         or 20
     )
 
+    # How long a bulletin stays openable for a user whose search surfaced it.
+    # Only affects users without the browse permission; for everyone else the
+    # check never runs.
+    BULLETIN_SEARCH_HIT_TTL = int(
+        os.environ.get("BULLETIN_SEARCH_HIT_TTL")
+        or manager.get_config("BULLETIN_SEARCH_HIT_TTL")
+        or 86400
+    )
+
     # Valid video extension list (will be processed during ETL)
     ETL_VID_EXT = manager.get_config("ETL_VID_EXT")
 
@@ -601,6 +610,7 @@ class TestConfig:
     MEDIA_WATERMARK_TEXT = "Yazda"
     SEMANTIC_SEARCH_THRESHOLD = 0.65
     SEMANTIC_SEARCH_MAX_RESULTS = 20
+    BULLETIN_SEARCH_HIT_TTL = 86400
     DEDUP_LOW_DISTANCE = 0.3
     DEDUP_MAX_DISTANCE = 0.5
     DEDUP_BATCH_SIZE = 30

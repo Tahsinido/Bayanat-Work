@@ -103,6 +103,17 @@ class PartialGeoLocationModel(BaseValidationModel):
     comment: Optional[str] = None
 
 
+class PartialGeoPointModel(BaseValidationModel):
+    """A single coordinate pair, shaped the way the GeoMap picker emits it.
+
+    Both halves are optional so a cleared map round-trips as an empty point
+    rather than a validation error.
+    """
+
+    lat: Optional[float] = Field(default=None, ge=-90, le=90)
+    lng: Optional[float] = Field(default=None, ge=-180, le=180)
+
+
 class PartialEventLocationModel(BaseValidationModel):
     id: Optional[int] = None
 
@@ -945,6 +956,11 @@ class FieldDataSiteValidationModel(StrictValidationModel):
     has_interview: Optional[bool] = False
     interview_names: Optional[List[str]] = None
     medias: Optional[List[PartialMediaModel]] = None
+    # This site's own GPS reading. latitude/longitude are echoed back by the
+    # front-end from to_dict and ignored on the way in; `geo` is what is read.
+    geo: Optional[PartialGeoPointModel] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
     @field_validator("mission_date", "analysis_date")
     @classmethod
@@ -984,6 +1000,8 @@ class FieldDataValidationModel(StrictValidationModel):
     external_link: Optional[str] = Field(default=None, max_length=2048)
     sites: Optional[List[FieldDataSiteValidationModel]] = None
     locations: Optional[List[PartialLocationModel]] = None
+    # Map markers, the same shape Bulletin posts.
+    geoLocations: Optional[List[PartialGeoLocationModel]] = None
     times_documented: Optional[int] = Field(default=None, ge=0)
     has_interview: Optional[bool] = False
     interview_names: Optional[List[str]] = None
@@ -1604,6 +1622,7 @@ class UserValidationModel(StrictValidationModel):
     can_export: Optional[bool] = None
     can_import_web: Optional[bool] = None
     can_access_media: Optional[bool] = None
+    can_browse_bulletins: Optional[bool] = None
     active: bool
     force_reset: Optional[str] = None
     google_id: Optional[str] = None

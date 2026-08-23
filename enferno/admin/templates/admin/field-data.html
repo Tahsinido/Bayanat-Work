@@ -183,6 +183,41 @@
                                                 </v-col>
                                             </v-row>
 
+                                            <!-- GPS, the same marker editor Bulletins use. The
+                                                 Locations picker above says where this sits in
+                                                 the archive's geography; these say where on the
+                                                 ground. Both are drawn on the overview map. -->
+                                            <v-divider class="my-3"></v-divider>
+                                            <div class="d-flex align-center mb-2">
+                                                <div class="text-overline text-medium-emphasis">
+                                                    {{ _('GPS Coordinates') }}
+                                                    <span v-if="editedItem.geoLocations?.length" class="text-disabled">
+                                                        (${editedItem.geoLocations.length})
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <v-row>
+                                                <v-col cols="12">
+                                                    <geo-locations
+                                                            v-model="editedItem.geoLocations"
+                                                            :others="editedItem.geoLocations"
+                                                            @locations-updated="geoLocationsUpdated"
+                                                    ></geo-locations>
+                                                    <div class="text-caption text-medium-emphasis mt-1">
+                                                        {{ _('Click the map to drop a marker, or type the latitude and longitude directly.') }}
+                                                    </div>
+                                                </v-col>
+                                            </v-row>
+
+                                            <v-row v-if="mapPoints.length">
+                                                <v-col cols="12">
+                                                    <div class="text-caption text-medium-emphasis mb-1">
+                                                        {{ _('Overview — GPS markers and the linked Location records together') }}
+                                                    </div>
+                                                    <global-map :model-value="mapPoints"></global-map>
+                                                </v-col>
+                                            </v-row>
+
                                             <v-row>
                                                 <v-col cols="12" md="8">
                                                     <v-combobox
@@ -289,6 +324,28 @@
                                                                               label="{{ _('Type of Site') }}"></v-text-field>
                                                             </v-col>
                                                         </v-row>
+                                                        <!-- This site's own reading. Separate graves or
+                                                             buildings under one location stand metres
+                                                             apart; left blank the site is simply shown at
+                                                             the parent location's markers. -->
+                                                        <v-row>
+                                                            <v-col cols="12">
+                                                                <div class="d-flex align-center mb-1">
+                                                                    <div class="text-caption text-medium-emphasis">
+                                                                        {{ _('GPS of this site — click the map or type the coordinates') }}
+                                                                    </div>
+                                                                    <v-spacer></v-spacer>
+                                                                    <v-btn v-if="site.geo" size="x-small" variant="text"
+                                                                           prepend-icon="mdi-close"
+                                                                           @click="clearSiteGeo(site)">{{ _('Clear') }}</v-btn>
+                                                                </div>
+                                                                <geo-map v-model="site.geo"
+                                                                         :map-height="260"
+                                                                         :others="mapPoints"
+                                                                         style="z-index: 200;"></geo-map>
+                                                            </v-col>
+                                                        </v-row>
+
                                                         <v-row>
                                                             <v-col cols="12" md="3">
                                                                 <v-text-field v-model="site.collected_data_by"
@@ -803,6 +860,9 @@
 <!-- Same media stack Bulletins use, so previews/viewers behave identically. -->
 <script src="/static/js/common/local-path.js?v={{ config.VERSION }}"></script>
 <script src="/static/js/components/SearchField.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/GeoMap.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/GeoLocations.js?v={{ config.VERSION }}"></script>
+<script src="/static/js/components/GlobalMap.js?v={{ config.VERSION }}"></script>
 <script src="/static/js/components/UniField.js?v={{ config.VERSION }}"></script>
 <script src="/static/js/components/MediaGrid.js?v={{ config.VERSION }}"></script>
 <script src="/static/js/components/DownloadCodeDialog.js?v={{ config.VERSION }}"></script>
@@ -848,7 +908,8 @@
         interview_names: [],
         medias: [],
         sites: [],
-        locations: []
+        locations: [],
+        geoLocations: []
     };
 
     const SITE_DEFAULT = {
@@ -859,7 +920,10 @@
         data_size_for_site: "", total_size: "", data_storage_location: "",
         external_link: "", description: "", legal_analysis: "", analysis_by: "",
         analysis_date: null, shared_with: "", excavated_status: "",
-        times_documented: null, has_interview: false, interview_names: []
+        times_documented: null, has_interview: false, interview_names: [],
+        // null, not {}: GeoMap treats an object without coordinates as a
+        // marker at the map's default centre.
+        geo: null
     };
 
     const SITE_NUMERIC = ['no_of_site', 'total_photos', 'total_videos', 'total_interviews',
@@ -940,6 +1004,48 @@
             },
             formTitle() {
                 return this.editedIndex === -1 ? "{{ _('New Item') }}" : "{{ _('Edit Item') }}";
+            },
+
+            // Everything with coordinates on this record, in the shape GlobalMap
+            // draws: the GPS markers, the linked Location records, and each
+            // site's own reading. Colour-coded so the three are told apart --
+            // the same palette bulletins use for markers and locations.
+            //
+            // Re-read on every change to geoLocations, so the overview follows
+            // the marker editor without a manual refresh.
+            mapPoints() {
+                const item = this.editedItem || {};
+                const points = [];
+
+                (item.locations || []).forEach(loc => {
+                    if (loc.lat == null || loc.lng == null) return;
+                    points.push({
+                        ...loc, color: '#00a1f1',
+                        title: loc.full_string || loc.title,
+                        parentId: item.id, class_type: 'field_data'
+                    });
+                });
+
+                (item.geoLocations || []).forEach((geo, i) => {
+                    if (geo.lat == null || geo.lng == null) return;
+                    points.push({
+                        ...geo, number: i + 1, color: '#ffbb00',
+                        parentId: item.id, class_type: 'field_data',
+                        type: geo.geotype?.title
+                    });
+                });
+
+                (item.sites || []).forEach(site => {
+                    const geo = site.geo;
+                    if (!geo || geo.lat == null || geo.lng == null) return;
+                    points.push({
+                        lat: geo.lat, lng: geo.lng, color: '#7cb342',
+                        title: site.site_name || "{{ _('Untitled site') }}",
+                        parentId: item.id, class_type: 'field_data'
+                    });
+                });
+
+                return points;
             },
             headers() {
                 // Deliberately minimal: the full record opens in the dialog.
@@ -1043,10 +1149,15 @@
                         interview_names: [...(full.interview_names || [])],
                         medias: [...(full.medias || [])],
                         locations: [...(full.locations || [])],
+                        geoLocations: [...(full.geoLocations || [])],
                         sites: (full.sites || []).map(s => Object.assign({}, SITE_DEFAULT, s, {
                             data_types: [...(s.data_types || [])],
                             interview_names: [...(s.interview_names || [])],
-                            medias: [...(s.medias || [])]
+                            medias: [...(s.medias || [])],
+                            // GeoMap binds to an object; a site with no reading
+                            // must start as null, not an empty pair, or the map
+                            // drops a marker at 0,0.
+                            geo: s.geo ? {...s.geo} : null
                         }))
                     });
                     this.descKey++;
@@ -1094,9 +1205,25 @@
                 window.open(`/admin/eyewitness/${id}`, '_blank');
             },
 
+            // The marker editor mutates its own array in place, which Vue does
+            // not see. Bulletins solve it the same way: push a popped element
+            // so the array identity changes and the overview map redraws.
+            geoLocationsUpdated() {
+                if (this.editedItem.geoLocations?.length) {
+                    this.editedItem.geoLocations.push(this.editedItem.geoLocations.pop());
+                }
+            },
+
+            // Back to "no reading for this site". Setting null rather than
+            // clearing the pair keeps the map from dropping a marker at 0,0.
+            clearSiteGeo(site) {
+                site.geo = null;
+            },
+
             blankItem() {
                 return Object.assign({}, FIELD_DATA_DEFAULT, {
-                    data_types: [], interview_names: [], medias: [], sites: [], locations: []
+                    data_types: [], interview_names: [], medias: [], sites: [],
+                    locations: [], geoLocations: []
                 });
             },
 
@@ -1327,6 +1454,17 @@
                         });
                     } else if (key === 'locations') {
                         value = (value || []).map(l => ({id: l.id}));
+                    } else if (key === 'geoLocations') {
+                        // The marker editor keeps working state on each entry
+                        // (latlng, mode); send only the fields the API reads.
+                        value = (value || [])
+                            .filter(g => g && g.lat != null && g.lng != null)
+                            .map(g => ({
+                                id: g.id || null, title: g.title, geotype: g.geotype || null,
+                                main: !!g.main, lat: Number(g.lat), lng: Number(g.lng),
+                                comment: g.comment || null
+                            }))
+                            .map(g => { if (g.id === null) delete g.id; return g; });
                     } else if (key === 'medias') {
                         // Send only what the API validates; to_dict returns extras.
                         value = (value || []).map(m => ({
@@ -1386,6 +1524,9 @@
 
     app.component('TinymceEditor', Editor);
     app.component('LocationSearchField', LocationSearchField);
+    app.component('GeoMap', GeoMap);
+    app.component('GeoLocations', GeoLocations);
+    app.component('GlobalMap', GlobalMap);
     app.component('UniField', UniField);
     app.component('MediaGrid', MediaGrid);
     app.component('DownloadCodeDialog', DownloadCodeDialog);
