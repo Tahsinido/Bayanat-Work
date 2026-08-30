@@ -90,7 +90,10 @@
   data-is-da="{{ current_user.has_role('DA')|tojson if current_user.is_authenticated else 'false' }}"
   data-settings='{{ current_user.settings|tojson if current_user.is_authenticated and current_user.settings else '{}' }}'
   data-lang="{{ get_locale() }}"
-  data-maps-api-endpoint="{{ config.MAPS_API_ENDPOINT }}"
+  {# With the local tile store on, every map reads tiles from this host, so it #}
+  {# keeps working with no internet. Falls back to the configured public       #}
+  {# endpoint when the store is switched off.                                  #}
+  data-maps-api-endpoint="{{ '/admin/api/tiles/{z}/{x}/{y}.png' if config.OFFLINE_TILES_ENABLED else config.MAPS_API_ENDPOINT }}"
   data-ocr-provider="{{ config.OCR_PROVIDER }}"
   data-download-approval="{{ config.DOWNLOAD_APPROVAL_ENABLED|tojson }}"
   data-app-version="{{ config.VERSION }}"

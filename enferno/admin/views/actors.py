@@ -21,6 +21,7 @@ from enferno.admin.validation.models import (
 from enferno.extensions import rds, db
 from enferno.tasks import bulk_update_actors
 from enferno.user.models import Role
+from enferno.utils import record_access
 from enferno.utils.http_response import HTTPResponse
 from enferno.utils.logging_utils import get_logger
 from enferno.utils.search_utils import SearchUtils
@@ -29,6 +30,10 @@ import enferno.utils.typing as t
 from . import admin, PER_PAGE, REL_PER_PAGE, can_assign_roles, reject_if_review_locked
 
 logger = get_logger()
+
+# Returned to a user without the browse permission who asked for an unfiltered
+# listing. Not an error: searching is open to them, listing is not.
+SEARCH_REQUIRED = "Search to see actors."
 
 
 # Actor fields routes
@@ -78,6 +83,24 @@ def api_actors(validated_data: dict) -> Response:
     cursor = validated_data.get("cursor")
     per_page = validated_data.get("per_page", PER_PAGE)
     include_count = validated_data.get("include_count", False)
+
+    # Searching actors and browsing them are separate privileges. Without the
+    # browse permission an unfiltered request gets an empty page rather than the
+    # table: the user has not searched for anything yet, so there is nothing to
+    # show them. Enforced here rather than in the page, so posting to this
+    # endpoint directly is subject to the same rule.
+    if not record_access.is_search(q) and not record_access.can_browse("actor"):
+        return HTTPResponse.success(
+            data={
+                "items": [],
+                "nextCursor": None,
+                "total": 0,
+                "totalType": "exact",
+                "searchRequired": True,
+                "meta": {"currentPageSize": 0, "hasMore": False, "isFirstPage": True},
+            },
+            message=SEARCH_REQUIRED,
+        )
 
     search = SearchUtils(q, "actor")
     base_query = search.get_query().options(
@@ -176,6 +199,14 @@ def api_actors(validated_data: dict) -> Response:
         else:
             # User doesn't have access - return restricted info only
             serialized_items.append({"id": item.id, "restricted": True})
+
+    # A search grants access to what it found. Only the rows this user was
+    # actually shown count; the restricted stubs above carry no content and stay
+    # closed. No-op for users who can browse.
+    record_access.remember_hits(
+        "actor",
+        [item["id"] for item in serialized_items if not item.get("restricted")],
+    )
 
     response = {
         "items": serialized_items,
@@ -455,6 +486,21 @@ def api_actor_get(
     actor = db.session.get(Actor, id)
     if not actor:
         return HTTPResponse.not_found("Actor not found")
+
+    # Without the browse permission an actor opens only if this user's own
+    # search put it in front of them. Otherwise this endpoint would be a way to
+    # read the table one row at a time and never search at all.
+    if not record_access.may_open("actor", id):
+        Activity.create(
+            current_user,
+            Activity.ACTION_VIEW,
+            Activity.STATUS_DENIED,
+            actor.to_mini(),
+            "actor",
+            details=f"Attempt to open Actor {id} without browse permission or a search that found it.",
+        )
+        return HTTPResponse.forbidden("Search to see actors")
+
     else:
         mode = request.args.get("mode", None)
         if current_user.can_access(actor):
@@ -501,6 +547,11 @@ def api_actor_profiles(actor_id: t.id) -> Response:
     if not actor:
         return HTTPResponse.not_found("Actor not found")
 
+    # Profiles are read through the parent actor, so they need the same standing
+    # as opening it.
+    if not record_access.may_open("actor", actor_id):
+        return HTTPResponse.forbidden("Search to see actors")
+
     if not current_user.can_access(actor):
         Activity.create(
             current_user,
@@ -544,6 +595,24 @@ def actor_relations(id: t.id) -> Response:
     actor = db.session.get(Actor, id)
     if not actor:
         return HTTPResponse.not_found("Actor not found")
+
+    # Relations are read through the parent record, so opening them requires the
+    # same standing as opening it: the record's own role restrictions, and -- for
+    # a user who cannot browse -- a search of their own that surfaced it.
+    # Otherwise this is a second way to walk the table by id.
+    if not record_access.may_open("actor", id):
+        return HTTPResponse.forbidden("Search to see actors")
+    if not current_user.can_access(actor):
+        Activity.create(
+            current_user,
+            Activity.ACTION_VIEW,
+            Activity.STATUS_DENIED,
+            actor.to_mini(),
+            "actor",
+            details=f"Unauthorized attempt to view relations of restricted Actor {id}.",
+        )
+        return HTTPResponse.forbidden("Restricted Access")
+
     items = []
 
     if cls == "bulletin":
@@ -583,6 +652,11 @@ def api_actor_mp_get(id: t.id) -> Response:
     profile = db.session.get(ActorProfile, id)
     if not profile:
         return HTTPResponse.not_found("Actor profile not found")
+
+    # Reached by profile id rather than actor id, but it is the actor's data --
+    # gate it on the actor the same way.
+    if not record_access.may_open("actor", profile.actor_id):
+        return HTTPResponse.forbidden("Search to see actors")
 
     if not current_user.can_access(profile.actor):
         Activity.create(

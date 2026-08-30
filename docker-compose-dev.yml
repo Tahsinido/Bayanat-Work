@@ -59,6 +59,7 @@ services:
     volumes:
       - 'bayanat_dev_backups:/app/backups/:rw'
       - 'bayanat_dev_media:/app/enferno/media/:rw'
+      - 'bayanat_dev_tiles:/app/enferno/tiles/:rw'
       - 'bayanat_dev_imports:/app/enferno/imports/:rw'
       - 'bayanat_dev_logs:/app/logs/:rw'
       - '${PWD}/config.json:/app/config.json:rw'
@@ -93,6 +94,7 @@ services:
         condition: service_healthy
 
 volumes:
+  bayanat_dev_tiles:
   redis_dev_data:
   postgres_dev_data:
   bayanat_dev_media:

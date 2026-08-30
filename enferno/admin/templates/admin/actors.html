@@ -90,10 +90,20 @@
                     >
 
                         <template v-slot:top>
+                            <!-- This user may search actors but not browse them,
+                                 so nothing is listed until they search. -->
+                            <v-sheet v-if="searchRequired" class="mx-3 mt-3">
+                                <v-alert type="info" variant="tonal" density="compact" icon="mdi-magnify">
+                                    {{ _('Search to see actors. Results are limited to the records you are allowed to view.') }}
+                                </v-alert>
+                            </v-sheet>
+
                             <v-sheet class="ma-3 d-flex align-center">
-                                <v-btn variant="text" class="hidden-sm-and-down" @click="allActors"
+                                <!-- "All Actors" clears the search, which is exactly
+                                     what a search-only user may not ask for. -->
+                                <v-btn v-if="canBrowseActors" variant="text" class="hidden-sm-and-down" @click="allActors"
                                        text>{{ _('All Actors') }}</v-btn>
-                                <v-divider class="mx-2 hidden-sm-and-down" inset vertical></v-divider>
+                                <v-divider v-if="canBrowseActors" class="mx-2 hidden-sm-and-down" inset vertical></v-divider>
                                 <v-btn variant="text" class="hidden-sm-and-down" @click="myAssigned"
                                        text>{{ _('Assigned to me') }}</v-btn>
                                 <v-divider class="mx-2 hidden-sm-and-down" inset vertical></v-divider>
@@ -534,6 +544,8 @@
                 searchPanels: 0,
 
                 searchTime: null,
+                // Set when the server answered "search first" instead of a page.
+                searchRequired: false,
                 searches: [],
                 savedSearchSelection: null,
 
@@ -772,6 +784,15 @@
                     return this.editedItem.id ? this.translations.editActor_ : this.translations.newActor_;
                 },
 
+                // Whether this user may page through the actor list at all.
+                // Everyone can search; listing without searching is a granted
+                // permission. Mirrors the server rule so the page does not ask
+                // for a list it will never be given -- the server enforces it.
+                canBrowseActors() {
+                    return this.has_role(this.currentUser, 'Admin')
+                        || !!this.currentUser.can_browse_actors;
+                },
+
                 allowedRoles() {
                     if (this.has_role(this.currentUser, 'Admin')) {
                         return this.roles;
@@ -899,7 +920,15 @@
                     if (this.$route.query.reltoi) return this.filter_related_to_incident(this.$route.query.reltoi);
 
                     // Only refresh on initial page load
-                    if (initialLoad) this.refresh();
+                    // Only refresh on initial page load -- and only for users
+                    // allowed to see a list they did not search for. For the rest
+                    // the first view is the prompt to search.
+                    if (!initialLoad) return;
+                    if (!this.canBrowseActors) {
+                        this.searchRequired = true;
+                        return;
+                    }
+                    this.refresh();
                 },
                 fetchIdNumberTypes() {
                     // If already loaded the exit
@@ -1201,6 +1230,9 @@
                             console.log(`API call took ${duration}ms`)
 
                             this.items = response.data.items;
+                            // The server answers an unfiltered request from a
+                            // search-only user with an empty page and this flag.
+                            this.searchRequired = !!response.data.searchRequired;
                             const isSearchEmpty = this.search.length === 1 && Object.keys(this.search[0]).length === 0;
                             const hasSearched = !isSearchEmpty;
 

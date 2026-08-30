@@ -37,6 +37,10 @@ const UserCard = Vue.defineComponent({
         {
           value: this.user.can_browse_bulletins,
           label: this.user.can_browse_bulletins ? this.translations.canBrowseBulletins_ : this.translations.cannotBrowseBulletins_
+        },
+        {
+          value: this.user.can_browse_actors,
+          label: this.user.can_browse_actors ? this.translations.canBrowseActors_ : this.translations.cannotBrowseActors_
         }
       ];
     }

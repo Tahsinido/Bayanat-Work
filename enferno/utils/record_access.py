@@ -1,24 +1,27 @@
-"""Search-only bulletin access.
+"""Search-only access to record listings.
 
-Browsing the bulletin list and searching it are separate privileges. A user
-without the browse permission gets nothing back from the list endpoint until
-they actually search for something; a user who has it keeps the paginated feed
-of the whole table.
+Browsing a record list and searching it are separate privileges. A user without
+the browse permission for a record type gets nothing back from its list endpoint
+until they actually search for something; a user who has it keeps the paginated
+feed of the whole table.
 
 The rule lives on the API rather than in the page, so calling
-/admin/api/bulletins/ directly is subject to exactly the same restriction as
-the UI is.
+/admin/api/bulletins/ or /admin/api/actors/ directly is subject to exactly the
+same restriction as the UI is.
 
-A search also grants access to what it found: the bulletins a user's own search
+A search also grants access to what it found: the records a user's own search
 surfaced become openable by that user for a while. Without that the
-single-record endpoint would be an unmetered way around the list restriction --
-walk the ids and read the table one row at a time. Hits are held per user in
-Redis under an expiry, so what a search grants is scoped to the searcher and
-does not outlive their work on it.
+single-record endpoints would be an unmetered way around the list restriction --
+walk the ids and read the table one row at a time. Hits are held per user and
+per record type in Redis under an expiry, so what a search grants is scoped to
+the searcher and does not outlive their work on it.
 
 Per-record role restrictions (User.can_access) are untouched and still apply on
 top of all of this. This module decides *whether* results may come back at all,
 never *which* ones.
+
+Each record type carries its own permission, so a researcher can be allowed to
+browse actors without also being handed the bulletin archive.
 """
 
 from __future__ import annotations
@@ -33,12 +36,18 @@ from enferno.utils.logging_utils import get_logger
 
 logger = get_logger()
 
-# How long a bulletin stays openable after a search surfaced it. Long enough to
+# How long a record stays openable after a search surfaced it. Long enough to
 # read through a result set and come back to it, short enough that access
 # granted by one afternoon's search does not persist indefinitely.
 DEFAULT_SEARCH_HIT_TTL = 24 * 60 * 60
 
-_KEY = "bulletin:searchhit:{user}:{bulletin}"
+# Record type -> the User column that grants browsing it.
+BROWSE_PERMISSIONS = {
+    "bulletin": "can_browse_bulletins",
+    "actor": "can_browse_actors",
+}
+
+_KEY = "{entity}:searchhit:{user}:{record}"
 
 # Keys that appear in a query block but narrow nothing by themselves.
 #
@@ -79,9 +88,9 @@ NON_QUALIFYING_KEYS = frozenset(
 
 
 def search_hit_ttl() -> int:
-    """Seconds a searched-for bulletin stays openable.
+    """Seconds a searched-for record stays openable.
 
-    Kept tolerant: a bad value in the saved configuration must not take bulletin
+    Kept tolerant: a bad value in the saved configuration must not take record
     access down, so it is logged and the default stands.
     """
     value = None
@@ -107,24 +116,33 @@ def search_hit_ttl() -> int:
         return DEFAULT_SEARCH_HIT_TTL
 
 
-def can_browse(user: Optional[Any] = None) -> bool:
-    """True when this user may list bulletins without searching first.
+def can_browse(entity: str, user: Optional[Any] = None) -> bool:
+    """True when this user may list `entity` records without searching first.
 
-    Admins always may. Everyone else needs the permission granted to them
-    explicitly, the same way exporting and media access are granted.
+    Admins always may. Everyone else needs the permission for that record type
+    granted to them explicitly, the same way exporting and media access are.
+
+    An unknown entity is treated as browsable: this module exists to restrict
+    the two list endpoints wired to it, and must never become an accidental
+    blanket denial somewhere it was never applied.
     """
+    permission = BROWSE_PERMISSIONS.get(entity)
+    if permission is None:
+        logger.warning(f"No browse permission is defined for {entity!r}; allowing")
+        return True
+
     user = current_user if user is None else user
     if user is None or not getattr(user, "is_authenticated", False):
         return False
     if user.has_role("Admin"):
         return True
-    return bool(getattr(user, "can_browse_bulletins", False))
+    return bool(getattr(user, permission, False))
 
 
 def is_search(q: Any) -> bool:
     """True when the query actually asks for something.
 
-    `q` is the list of filter blocks the search endpoint receives. An unfiltered
+    `q` is the list of filter blocks a search endpoint receives. An unfiltered
     listing arrives as `[{}]`, and blocks whose values are all empty (a cleared
     text box, an emptied multi-select) are no different from that -- both mean
     "everything", which is the thing a search-only user may not have.
@@ -142,19 +160,19 @@ def is_search(q: Any) -> bool:
     return False
 
 
-def _key(user_id: int, bulletin_id: int) -> str:
-    return _KEY.format(user=user_id, bulletin=bulletin_id)
+def _key(entity: str, user_id: int, record_id: int) -> str:
+    return _KEY.format(entity=entity, user=user_id, record=record_id)
 
 
-def remember_hits(ids: Iterable[Any], user: Optional[Any] = None) -> None:
-    """Record that this user's own search surfaced these bulletins.
+def remember_hits(entity: str, ids: Iterable[Any], user: Optional[Any] = None) -> None:
+    """Record that this user's own search surfaced these records.
 
-    A no-op for users who can browse: nothing needs remembering when every
-    record is open to them anyway.
+    A no-op for users who can browse this record type: nothing needs
+    remembering when every row is open to them anyway.
     """
     user = current_user if user is None else user
     user_id = getattr(user, "id", None)
-    if not user_id or can_browse(user):
+    if not user_id or can_browse(entity, user):
         return
 
     wanted = []
@@ -169,25 +187,25 @@ def remember_hits(ids: Iterable[Any], user: Optional[Any] = None) -> None:
     ttl = search_hit_ttl()
     try:
         pipe = rds.pipeline()
-        for bulletin_id in wanted:
-            pipe.setex(_key(user_id, bulletin_id), ttl, 1)
+        for record_id in wanted:
+            pipe.setex(_key(entity, user_id, record_id), ttl, 1)
         pipe.execute()
     except Exception as e:
         # The search itself still succeeded; only the follow-up "open this
         # result" will be refused. Logged loudly because that combination looks
         # like a permissions bug from the user's side.
-        logger.error(f"Could not record bulletin search hits for user {user_id}: {e}")
+        logger.error(f"Could not record {entity} search hits for user {user_id}: {e}")
 
 
-def may_open(bulletin_id: Any, user: Optional[Any] = None) -> bool:
-    """True when this user may open this bulletin's full record.
+def may_open(entity: str, record_id: Any, user: Optional[Any] = None) -> bool:
+    """True when this user may open this record's full detail.
 
-    Either they can browse, or one of their own searches put this bulletin in
-    front of them. Says nothing about the record's own role restrictions --
-    User.can_access is still checked separately by the caller.
+    Either they can browse this record type, or one of their own searches put
+    this record in front of them. Says nothing about the record's own role
+    restrictions -- User.can_access is still checked separately by the caller.
     """
     user = current_user if user is None else user
-    if can_browse(user):
+    if can_browse(entity, user):
         return True
 
     user_id = getattr(user, "id", None)
@@ -195,10 +213,10 @@ def may_open(bulletin_id: Any, user: Optional[Any] = None) -> bool:
         return False
 
     try:
-        return bool(rds.exists(_key(user_id, int(bulletin_id))))
+        return bool(rds.exists(_key(entity, user_id, int(record_id))))
     except (TypeError, ValueError):
         return False
     except Exception as e:
         # Fail closed. An access check that cannot be evaluated is not a pass.
-        logger.error(f"Could not check bulletin search hits for user {user_id}: {e}")
+        logger.error(f"Could not check {entity} search hits for user {user_id}: {e}")
         return False

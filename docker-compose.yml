@@ -62,6 +62,7 @@ services:
     volumes:
       - '${PWD}/backups:/app/backups/:rw'
       - '${MEDIA_PATH:-./enferno/media}:/app/enferno/media/:rw'
+      - '${TILES_PATH:-./enferno/tiles}:/app/enferno/tiles/:rw'
       - '${PWD}/enferno/imports:/app/enferno/imports/:rw'
       - '${PWD}/logs/:/app/logs/:rw'
       - '${PWD}/config.json:/app/config.json:rw'

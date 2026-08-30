@@ -1273,3 +1273,171 @@ def semantic_probe(query: str, limit: int) -> None:
             f"Every match is below the threshold. Lower SEMANTIC_SEARCH_THRESHOLD "
             f"(try {max(0.05, round(matches[0][1] - 0.05, 2))}) to return the closest ones."
         )
+
+
+# ---------------------------------------------------------------------------
+# Offline map tiles
+# ---------------------------------------------------------------------------
+
+tiles_cli = AppGroup("tiles", short_help="Offline map tile store commands")
+
+
+def _human_bytes(n):
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return f"{n:.1f} {unit}" if unit != "B" else f"{n} B"
+        n /= 1024.0
+
+
+@tiles_cli.command("status")
+@with_appcontext
+def tiles_status():
+    """Report what the local tile store holds."""
+    from enferno.utils import offline_tiles as ot
+
+    stats = ot.store_stats()
+    click.echo(f"Store:            {stats['root']}")
+    click.echo(f"Serving locally:  {'yes' if ot.enabled() else 'no (OFFLINE_TILES_ENABLED is off)'}")
+    click.echo(f"Upstream source:  {'configured' if ot.source_template() else 'not set'}")
+    click.echo(f"Tiles on disk:    {stats['tiles']} ({_human_bytes(stats['bytes'])})")
+    if stats["zooms"]:
+        click.echo("By zoom:")
+        for zoom in sorted(stats["zooms"]):
+            row = stats["zooms"][zoom]
+            click.echo(f"  z{zoom:<3} {row['tiles']:>8} tiles  {_human_bytes(row['bytes'])}")
+
+    regions = sorted(ot.REGIONS)
+    expected = ot.count_tiles(regions, 0, ot.max_zoom())
+    click.echo(f"\nCoverage target:  {expected} tiles for {', '.join(regions)} to z{ot.max_zoom()}")
+    if expected:
+        click.echo(f"Held:             {min(100.0, stats['tiles'] / expected * 100):.1f}% of target")
+
+
+@tiles_cli.command("plan")
+@click.option("--region", default="iraq,syria", show_default=True, help="Comma-separated regions.")
+@click.option("--min-zoom", default=0, show_default=True, type=int)
+@click.option("--max-zoom", default=None, type=int, help="Defaults to OFFLINE_TILES_MAX_ZOOM.")
+@with_appcontext
+def tiles_plan(region, min_zoom, max_zoom):
+    """Show how many tiles a seed would fetch, without fetching anything."""
+    from enferno.utils import offline_tiles as ot
+
+    regions = [r.strip().lower() for r in region.split(",") if r.strip()]
+    unknown = [r for r in regions if r not in ot.REGIONS]
+    if unknown:
+        raise click.ClickException(
+            f"Unknown region(s): {', '.join(unknown)}. Known: {', '.join(sorted(ot.REGIONS))}"
+        )
+    top = ot.max_zoom() if max_zoom is None else max_zoom
+
+    click.echo(f"Regions: {', '.join(regions)}   zoom {min_zoom}-{top}")
+    running = 0
+    for zoom in range(min_zoom, top + 1):
+        n = ot.count_tiles(regions, zoom, zoom)
+        running += n
+        click.echo(f"  z{zoom:<3} {n:>9} tiles   (cumulative {running})")
+    # ~12 KB is a fair average for a raster OSM-style PNG tile.
+    click.echo(f"\nTotal {running} tiles, roughly {_human_bytes(running * 12 * 1024)} on disk.")
+
+
+@tiles_cli.command("seed")
+@click.option("--region", default="iraq,syria", show_default=True, help="Comma-separated regions.")
+@click.option("--min-zoom", default=0, show_default=True, type=int)
+@click.option("--max-zoom", default=None, type=int, help="Defaults to OFFLINE_TILES_MAX_ZOOM.")
+@click.option("--source", default=None, help="Tile URL template. Defaults to OFFLINE_TILES_SOURCE.")
+@click.option("--rate", default=5.0, show_default=True, type=float, help="Max requests per second.")
+@click.option("--retries", default=2, show_default=True, type=int, help="Retries per failed tile.")
+@click.option("--redownload", is_flag=True, help="Fetch tiles even if already stored.")
+@with_appcontext
+def tiles_seed(region, min_zoom, max_zoom, source, rate, retries, redownload):
+    """Download map tiles for a region into the local store.
+
+    Resumable: tiles already on disk are skipped, so an interrupted run can
+    simply be started again.
+
+    You must supply a source you are entitled to bulk-download from. The public
+    OpenStreetMap tile servers are NOT such a source -- their tile usage policy
+    forbids it, and systematic downloads get blocked.
+    """
+    import time
+
+    from enferno.utils import offline_tiles as ot
+
+    template = (source or ot.source_template()).strip()
+    if not template:
+        raise click.ClickException(
+            "No tile source. Pass --source or set OFFLINE_TILES_SOURCE.\n"
+            "It must be a provider whose terms allow bulk downloading; the public\n"
+            "OpenStreetMap tile servers do not."
+        )
+    if "openstreetmap.org" in template or "tile.osm.org" in template:
+        click.echo(
+            "Refusing to bulk-download from the public OpenStreetMap tile servers:\n"
+            "their tile usage policy forbids it. Use a provider you are entitled to\n"
+            "draw from, or your own tile server.",
+            err=True,
+        )
+        raise SystemExit(2)
+
+    regions = [r.strip().lower() for r in region.split(",") if r.strip()]
+    unknown = [r for r in regions if r not in ot.REGIONS]
+    if unknown:
+        raise click.ClickException(
+            f"Unknown region(s): {', '.join(unknown)}. Known: {', '.join(sorted(ot.REGIONS))}"
+        )
+    top = ot.max_zoom() if max_zoom is None else max_zoom
+
+    total = ot.count_tiles(regions, min_zoom, top)
+    root = ot.store_root()
+    os.makedirs(root, exist_ok=True)
+    click.echo(f"Seeding {total} tiles for {', '.join(regions)} (z{min_zoom}-{top}) into {root}")
+
+    # The seeder wants every attempt made; the runtime circuit breaker is for
+    # keeping the map responsive offline, not for a deliberate bulk run.
+    ot.reset_breaker()
+
+    interval = 1.0 / rate if rate > 0 else 0.0
+    fetched = skipped = failed = 0
+    started = time.time()
+    next_report = time.time() + 5
+
+    for index, (z, x, y) in enumerate(ot.iter_tiles(regions, min_zoom, top), start=1):
+        if not redownload and ot.has_tile(z, x, y, root):
+            skipped += 1
+            continue
+
+        data = None
+        for attempt in range(retries + 1):
+            slot = time.time()
+            data = ot.fetch_tile(z, x, y, template=template, timeout=15.0)
+            if data:
+                break
+            ot.reset_breaker()
+            if attempt < retries:
+                time.sleep(min(2 ** attempt, 5))
+        if data and ot.write_tile(z, x, y, data, root):
+            fetched += 1
+        else:
+            failed += 1
+            logger.warning("Tile %s/%s/%s could not be fetched", z, x, y)
+
+        if interval:
+            elapsed = time.time() - slot
+            if elapsed < interval:
+                time.sleep(interval - elapsed)
+
+        if time.time() >= next_report:
+            done = index
+            rate_now = fetched / max(1e-6, time.time() - started)
+            click.echo(
+                f"  {done}/{total}  fetched={fetched} skipped={skipped} failed={failed}"
+                f"  ({rate_now:.1f} tiles/s)"
+            )
+            next_report = time.time() + 5
+
+    click.echo(
+        f"\nDone. fetched={fetched} skipped={skipped} failed={failed} "
+        f"in {time.time() - started:.0f}s"
+    )
+    if failed:
+        click.echo("Some tiles failed. Re-run to retry only those.", err=True)

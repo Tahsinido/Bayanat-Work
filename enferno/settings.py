@@ -330,6 +330,32 @@ class Config(object):
     # pybabel compile -d enferno/translations
 
     MAPS_API_ENDPOINT = manager.get_config("MAPS_API_ENDPOINT")
+
+    # Locally stored map tiles, so maps keep working with no internet. When
+    # enabled the maps read from /admin/api/tiles/ instead of the public
+    # endpoint above. OFFLINE_TILES_SOURCE is the upstream used to fill misses
+    # and to seed the store; it is intentionally empty by default, because the
+    # operator has to choose a source they are entitled to bulk-download from.
+    OFFLINE_TILES_ENABLED = bool(
+        os.environ.get("OFFLINE_TILES_ENABLED")
+        or manager.get_config("OFFLINE_TILES_ENABLED")
+        or False
+    )
+    OFFLINE_TILES_DIR = (
+        os.environ.get("OFFLINE_TILES_DIR")
+        or manager.get_config("OFFLINE_TILES_DIR")
+        or "/app/enferno/tiles"
+    )
+    OFFLINE_TILES_SOURCE = (
+        os.environ.get("OFFLINE_TILES_SOURCE")
+        or manager.get_config("OFFLINE_TILES_SOURCE")
+        or ""
+    )
+    OFFLINE_TILES_MAX_ZOOM = int(
+        os.environ.get("OFFLINE_TILES_MAX_ZOOM")
+        or manager.get_config("OFFLINE_TILES_MAX_ZOOM")
+        or 12
+    )
     GOOGLE_MAPS_API_KEY = manager.get_config("GOOGLE_MAPS_API_KEY")
 
     # Deduplication
@@ -681,6 +707,10 @@ class TestConfig:
     GEO_MAP_DEFAULT_CENTER_RADIUS = 1000
     GEO_MAP_DEFAULT_CENTER = {"lat": 33.510414, "lng": 36.278336, "radius": 1000}
     MAPS_API_ENDPOINT = "https://{s}.tile.osm.org/{z}/{x}/{y}.png"
+    OFFLINE_TILES_ENABLED = False
+    OFFLINE_TILES_DIR = "/app/enferno/tiles"
+    OFFLINE_TILES_SOURCE = ""
+    OFFLINE_TILES_MAX_ZOOM = 12
     GOOGLE_MAPS_API_KEY = "dummy_maps_api_key_for_testing"
 
     # UI Settings

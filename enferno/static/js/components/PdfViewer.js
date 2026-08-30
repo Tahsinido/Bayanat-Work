@@ -15,8 +15,13 @@
  * against casual redistribution and an aid to accountability, never as a
  * guarantee that a viewer cannot retain a copy.
  *
- * The watermark below exists for that reason: it puts the viewer's identity into
- * the rendered pixels, so a screenshot or a saved canvas carries it too.
+ * Nothing is drawn over the document. What is shown here is the original file
+ * exactly as it is stored: no watermark, no viewer name, no date. The
+ * organisation stamp belongs only on a copy that leaves the system, which is
+ * applied server-side at download time -- see enferno/utils/watermark.py.
+ *
+ * Accountability is carried by the access log instead: every read through the
+ * proxy is recorded as an Activity against the user who made it.
  */
 const PdfViewer = Vue.defineComponent({
   props: ['media', 'mediaType'],
@@ -25,8 +30,6 @@ const PdfViewer = Vue.defineComponent({
     pageMap: new Map(),
     loading: false,
     error: false,
-    // Fixed once per open so every page of one viewing carries one stamp.
-    watermarkText: '',
   }),
 
   computed: {
@@ -47,7 +50,6 @@ const PdfViewer = Vue.defineComponent({
   created() {
     this._pdf = null;               // non-reactive PDFDocumentProxy
     this._rendering = new Set();    // guard against double render
-    this.watermarkText = this.buildWatermark();
   },
 
   beforeUnmount() {
@@ -143,11 +145,8 @@ const PdfViewer = Vue.defineComponent({
 
         await page.render({ canvasContext: ctx, viewport }).promise;
 
-        // Drawn into the canvas itself, not overlaid in the DOM: a screenshot,
-        // a "save image as" on the canvas, or a print all carry it, because by
-        // this point it is part of the pixels rather than a element sitting on
-        // top that could be hidden.
-        this.drawWatermark(ctx, viewport.width, viewport.height);
+        // Nothing is drawn after the page: what lands on the canvas is the
+        // document as stored.
 
         // Update to actual rendered dimensions and mark as done
         this.pageMap.set(pageNumber, {
@@ -164,41 +163,6 @@ const PdfViewer = Vue.defineComponent({
       } finally {
         this._rendering.delete(pageNumber);
       }
-    },
-
-    // Who is looking and when. Read from the server-rendered bootstrap rather
-    // than anything the page could be tricked into changing.
-    buildWatermark() {
-      const user = window.__username__ || '';
-      const now = new Date();
-      const stamp = now.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
-      return user ? `${user} · ${stamp}` : stamp;
-    },
-
-    drawWatermark(ctx, width, height) {
-      const text = this.watermarkText;
-      if (!text) return;
-
-      ctx.save();
-      // Light enough to read the document through, dark enough to survive a
-      // screenshot being brightened.
-      ctx.globalAlpha = 0.13;
-      ctx.fillStyle = '#111';
-      ctx.font = `${Math.max(12, Math.round(width / 42))}px sans-serif`;
-      ctx.textBaseline = 'middle';
-      ctx.rotate(-Math.PI / 6);
-
-      const stepX = ctx.measureText(text).width + 70;
-      const stepY = 95;
-      // Rotating the plane means the tiling has to overshoot the page on every
-      // side, otherwise corners come out bare.
-      const span = width + height;
-      for (let y = -span; y < span; y += stepY) {
-        for (let x = -span; x < span; x += stepX) {
-          ctx.fillText(text, x, y);
-        }
-      }
-      ctx.restore();
     },
 
     onIntersect(isIntersecting, entries, observer, page) {

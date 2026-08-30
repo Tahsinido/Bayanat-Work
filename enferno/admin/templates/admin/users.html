@@ -303,6 +303,13 @@
                                                       persistent-hint
                                                       v-model="editedItem.can_browse_bulletins"></v-switch>
                                         </v-col>
+                                        <v-col cols="12" md="3">
+                                            <v-switch :disabled="isAdmin" color="primary"
+                                                      label="{{ _('Can Browse Actors') }}"
+                                                      hint="{{ _('Off: the user must search before any actor is shown') }}"
+                                                      persistent-hint
+                                                      v-model="editedItem.can_browse_actors"></v-switch>
+                                        </v-col>
                                     </v-row>
                                 </v-container>
                             </v-card-text>
@@ -611,6 +618,7 @@
                         this.editedItem.can_import_web = true;
                         this.editedItem.can_access_media = true;
                         this.editedItem.can_browse_bulletins = true;
+                        this.editedItem.can_browse_actors = true;
                         return true;
                     }
                     return false;

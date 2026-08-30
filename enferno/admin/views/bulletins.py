@@ -22,7 +22,7 @@ from enferno.admin.validation.models import (
 from enferno.extensions import rds, db
 from enferno.tasks import bulk_update_bulletins
 from enferno.user.models import Role
-from enferno.utils import bulletin_access
+from enferno.utils import record_access
 from enferno.utils.date_helper import DateHelper
 from enferno.utils.http_response import HTTPResponse
 from enferno.utils.logging_utils import get_logger
@@ -107,7 +107,7 @@ def api_bulletins(validated_data: dict) -> Response:
     # table: the user has not searched for anything yet, so there is nothing to
     # show them. Enforced here rather than in the page, so posting to this
     # endpoint directly is subject to the same rule.
-    if not bulletin_access.is_search(q) and not bulletin_access.can_browse():
+    if not record_access.is_search(q) and not record_access.can_browse("bulletin"):
         return HTTPResponse.success(
             data={
                 "items": [],
@@ -240,8 +240,9 @@ def api_bulletins(validated_data: dict) -> Response:
     # A search grants access to what it found. Only the rows this user was
     # actually shown count; the restricted stubs above carry no content and stay
     # closed. No-op for users who can browse.
-    bulletin_access.remember_hits(
-        item["id"] for item in serialized_items if not item.get("restricted")
+    record_access.remember_hits(
+        "bulletin",
+        [item["id"] for item in serialized_items if not item.get("restricted")],
     )
 
     response = {
@@ -525,7 +526,7 @@ def api_bulletin_get(
     # search put it in front of them. Otherwise this endpoint would be a way to
     # read the table one row at a time and never search at all -- the same
     # browsing the list restriction exists to prevent, just slower.
-    if not bulletin_access.may_open(id):
+    if not record_access.may_open("bulletin", id):
         Activity.create(
             current_user,
             Activity.ACTION_VIEW,
@@ -593,7 +594,7 @@ def bulletin_relations(id: t.id) -> Response:
     # same standing as opening it: the record's own role restrictions, and -- for
     # a user who cannot browse -- a search of their own that surfaced it.
     # Otherwise this is a second way to walk the table by id.
-    if not bulletin_access.may_open(id):
+    if not record_access.may_open("bulletin", id):
         return HTTPResponse.forbidden("Search to see bulletins")
     if not current_user.can_access(bulletin):
         Activity.create(
@@ -829,7 +830,7 @@ def api_bulletins_semantic() -> Response:
 
     # A meaning-based search grants access to what it found on the same terms a
     # keyword search does. No-op for users who can browse.
-    bulletin_access.remember_hits(b.id for b in visible)
+    record_access.remember_hits("bulletin", (b.id for b in visible))
 
     terms = ss.query_terms(query)
     texts = [ss.bulletin_text(b) for b in visible]

@@ -1623,6 +1623,7 @@ class UserValidationModel(StrictValidationModel):
     can_import_web: Optional[bool] = None
     can_access_media: Optional[bool] = None
     can_browse_bulletins: Optional[bool] = None
+    can_browse_actors: Optional[bool] = None
     active: bool
     force_reset: Optional[str] = None
     google_id: Optional[str] = None
@@ -2080,6 +2081,11 @@ class FullConfigValidationModel(ConfigValidationModel):
     SEMANTIC_SEARCH_THRESHOLD: Optional[float] = Field(default=None, ge=0, le=1)
     SEMANTIC_SEARCH_MAX_RESULTS: Optional[int] = Field(default=None, gt=0, le=200)
     MAPS_API_ENDPOINT: str
+    OFFLINE_TILES_ENABLED: Optional[bool] = None
+    OFFLINE_TILES_DIR: Optional[str] = None
+    OFFLINE_TILES_SOURCE: Optional[str] = Field(default=None, max_length=2048)
+    OFFLINE_TILES_MAX_ZOOM: Optional[int] = Field(default=None, ge=0, le=19)
+    BULLETIN_SEARCH_HIT_TTL: Optional[int] = Field(default=None, ge=60)
     DEDUP_LOW_DISTANCE: Optional[float] = Field(default=None, ge=0, le=1)
     DEDUP_MAX_DISTANCE: Optional[float] = Field(default=None, ge=0, le=1)
     DEDUP_BATCH_SIZE: Optional[int] = Field(default=None, gt=0)
